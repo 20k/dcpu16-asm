@@ -76,18 +76,29 @@ constexpr bool is_label(std::string_view in)
 }
 
 inline
+constexpr bool is_hex_digit(char in)
+{
+    return
+    (in >= '0' && in <= '9') ||
+    in == 'a' || in == 'A' ||
+    in == 'b' || in == 'B' ||
+    in == 'c' || in == 'C' ||
+    in == 'd' || in == 'D' ||
+    in == 'e' || in == 'E' ||
+    in == 'f' || in == 'F';
+}
+
+inline
+constexpr bool is_digit(char in)
+{
+    return in >= '0' && in <= '9';
+}
+
+inline
 constexpr bool is_constant(std::string_view in)
 {
-    if(in.starts_with("0x"))
-    {
-        for(int i=2; i < (int)in.size(); i++)
-        {
-            if(!std::isxdigit(in[i]))
-                return false;
-        }
-
-        return true;
-    }
+    if(in.size() == 0)
+        return false;
 
     int start_idx = 0;
 
@@ -96,9 +107,22 @@ constexpr bool is_constant(std::string_view in)
         start_idx = 1;
     }
 
-    for(int i=start_idx; i < (int)in.size(); i++)
+    in.remove_prefix(start_idx);
+
+    if(in.starts_with("0x"))
     {
-        if(!std::isdigit(in[i]))
+        for(int i=2; i < (int)in.size(); i++)
+        {
+            if(!is_hex_digit(in[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    for(int i=0; i < (int)in.size(); i++)
+    {
+        if(!is_digit(in[i]))
             return false;
     }
 

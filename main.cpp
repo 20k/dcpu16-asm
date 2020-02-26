@@ -29,6 +29,15 @@ constexpr void constexpr_tests()
     static_assert(fcheck("SET X, 10") == "SET");
     static_assert(fcheck(" \n:tokeny \n") == ":tokeny");
     static_assert(fcheck(" 1234 , 5") == "1234");
+
+    static_assert(is_constant("-0x1234"));
+    static_assert(is_constant("0x1234"));
+    static_assert(is_constant("1234"));
+    static_assert(is_constant("-1234"));
+
+    static_assert(!is_constant("0xjasdf"));
+    static_assert(!is_constant("potato"));
+    static_assert(!is_constant("-1234cat"));
 }
 
 int main()
