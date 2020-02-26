@@ -203,24 +203,21 @@ constexpr int get_constant(std::string_view in)
         in.remove_prefix(1);
     }
 
+    int n = 0;
+
     if(in.starts_with("0x"))
     {
-        int n = positive_stoi_cxper(in, 16);
-
-        if(is_neg)
-            return -n;
-        else
-            return n;
+        n = positive_stoi_cxper(in, 16);
     }
     else
     {
-        int n = positive_stoi_cxper(in, 10);
-
-        if(is_neg)
-            return -n;
-        else
-            return n;
+        n = positive_stoi_cxper(in, 10);
     }
+
+    if(is_neg)
+        return -n;
+    else
+        return n;
 }
 
 #endif // COMMON_HPP_INCLUDED
