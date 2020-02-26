@@ -2,6 +2,7 @@
 #define COMMON_HPP_INCLUDED
 
 #include <string_view>
+#include <cctype>
 
 template<typename T>
 inline
@@ -66,6 +67,42 @@ constexpr std::string_view consume_next(std::string_view& in)
     in = second;
 
     return trim_end(first, [](char c) {return c == ' ' || c == '\n' || c == ','; });
+}
+
+inline
+constexpr bool is_label(std::string_view in)
+{
+    return in.starts_with(':');
+}
+
+inline
+constexpr bool is_constant(std::string_view in)
+{
+    if(in.starts_with("0x"))
+    {
+        for(int i=2; i < (int)in.size(); i++)
+        {
+            if(!std::isxdigit(in[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    int start_idx = 0;
+
+    if(in.starts_with('-'))
+    {
+        start_idx = 1;
+    }
+
+    for(int i=start_idx; i < (int)in.size(); i++)
+    {
+        if(!std::isdigit(in[i]))
+            return false;
+    }
+
+    return true;
 }
 
 #endif // COMMON_HPP_INCLUDED
