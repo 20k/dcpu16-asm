@@ -100,14 +100,10 @@ constexpr bool is_constant(std::string_view in)
     if(in.size() == 0)
         return false;
 
-    int start_idx = 0;
-
     if(in.starts_with('-'))
     {
-        start_idx = 1;
+        in.remove_prefix(1);
     }
-
-    in.remove_prefix(start_idx);
 
     if(in.starts_with("0x"))
     {
