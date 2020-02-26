@@ -125,4 +125,102 @@ constexpr bool is_constant(std::string_view in)
     return true;
 }
 
+inline
+constexpr int get_digit(char in)
+{
+    if(!is_digit(in))
+        return 0;
+
+    return in - '0';
+}
+
+inline
+constexpr int get_hex_digit(char in)
+{
+    if(!is_hex_digit(in))
+        return 0;
+
+    if(in >= '0' && in <= '9')
+        return in - '0';
+
+    if(in >= 'a' && in <= 'f')
+        return 10 + (in - 'a');
+
+    if(in >= 'A' && in <= 'F')
+        return 10 + (in - 'A');
+
+    return 0;
+}
+
+inline
+constexpr int positive_stoi_cxper(std::string_view in, int radix)
+{
+    if(in.size() == 0)
+        return 0;
+
+    int value = 0;
+    int base = 1;
+
+    for(int i=(int)in.size() - 1; i >= 0; i--)
+    {
+        if(radix == 10)
+        {
+            if(!is_digit(in[i]))
+            {
+                return value;
+            }
+
+            value += base * get_digit(in[i]);
+        }
+
+        if(radix == 16)
+        {
+            if(!is_hex_digit(in[i]))
+            {
+                return value;
+            }
+
+            value += base * get_hex_digit(in[i]);
+        }
+
+        base *= radix;
+    }
+
+    return value;
+}
+
+inline
+constexpr int get_constant(std::string_view in)
+{
+    if(in.size() == 0)
+        return 0;
+
+    bool is_neg = false;
+
+    if(in.starts_with('-'))
+    {
+        is_neg = true;
+        in.remove_prefix(1);
+    }
+
+    if(in.starts_with("0x"))
+    {
+        int n = positive_stoi_cxper(in, 16);
+
+        if(is_neg)
+            return -n;
+        else
+            return n;
+    }
+    else
+    {
+        int n = positive_stoi_cxper(in, 10);
+
+        if(is_neg)
+            return -n;
+        else
+            return n;
+    }
+}
+
 #endif // COMMON_HPP_INCLUDED
