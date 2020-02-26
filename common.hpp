@@ -220,4 +220,22 @@ constexpr int get_constant(std::string_view in)
         return n;
 }
 
+inline
+constexpr bool is_address(std::string_view in)
+{
+    return in.starts_with("[") && in.ends_with("]");
+}
+
+inline
+constexpr std::string_view extract_address_contents(std::string_view in)
+{
+    if(!is_address(in))
+        return "";
+
+    in.remove_prefix(1);
+    in.remove_suffix(1);
+
+    return in;
+}
+
 #endif // COMMON_HPP_INCLUDED
