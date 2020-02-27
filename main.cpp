@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "common.hpp"
+#include "base_asm.hpp"
 
 void tests()
 {
