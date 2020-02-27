@@ -3,6 +3,8 @@
 
 #include <optional>
 #include <string_view>
+#include <array>
+#include <tuple>
 
 inline
 constexpr std::optional<int> get_register_assembly_value_from_name(std::string_view in)
@@ -126,6 +128,139 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
     }
 
     return std::nullopt;
+}
+
+template<typename T>
+struct stack_vector
+{
+    std::array<T, 128> svec;
+    size_t idx = 0;
+
+    constexpr
+    void push_back(const T& in)
+    {
+        svec[idx] = in;
+    }
+};
+
+struct opcode
+{
+    std::string_view view;
+    int type;
+    uint16_t code;
+};
+
+inline
+constexpr
+std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint32_t>& out)
+{
+    opcode opcodes[] =
+    {
+        {"set", 0, 1},
+        {"mov", 0, 1},
+        {"add", 0, 2},
+        {"sub", 0, 3},
+        {"mul", 0, 4},
+        {"mli", 0, 5},
+        {"div", 0, 6},
+        {"dvi", 0, 7},
+        {"mod", 0, 8},
+        {"mdi", 0, 9},
+        {"and", 0, 0x0a},
+        {"bor", 0, 0x0b},
+        {"xor", 0, 0x0c},
+        {"shr", 0, 0x0d},
+        {"asr", 0, 0x0e},
+        {"shl", 0, 0x0f},
+        {"ifb", 0, 0x10},
+        {"ifc", 0, 0x11},
+        {"ife", 0, 0x12},
+        {"ifn", 0, 0x13},
+        {"ifg", 0, 0x14},
+        {"ifa", 0, 0x15},
+        {"ifl", 0, 0x16},
+        {"ifu", 0, 0x17},
+        {"adx", 0, 0x1a},
+        {"sbx", 0, 0x1b},
+        {"sti", 0, 0x1e},
+        {"std", 0, 0x1f},
+
+        {"jsr", 1, 0x01},
+        {"int", 1, 0x08},
+        {"iag", 1, 0x09},
+        {"ias", 1, 0x0a},
+        {"rfi", 1, 0x0b},
+        {"iaq", 1, 0x0c},
+        {"hwn", 1, 0x10},
+        {"hwq", 1, 0x11},
+        {"hwi", 1, 0x12},
+    };
+
+    auto consumed_name = consume_next(in);
+
+    for(auto [name, cls, code] : opcodes)
+    {
+        if(name == consumed_name)
+        {
+            if(cls == 0)
+            {
+                auto val_b = consume_next(in);
+                auto val_a = consume_next(in);
+
+                std::optional<uint32_t> extra_b;
+                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b);
+
+                std::optional<uint32_t> extra_a;
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a);
+
+                if(!compiled_b.has_value())
+                    return "first argument failed to decode";
+
+                if(!compiled_a.has_value())
+                    return "second argument failed to decode";
+
+                auto instr = construct_type_a(code, compiled_a.value(), compiled_b.value());
+
+                out.push_back(instr);
+
+                if(extra_a.has_value())
+                {
+                    out.push_back(extra_a.value());
+                }
+
+                if(extra_b.has_value())
+                {
+                    out.push_back(extra_b.value());
+                }
+
+                return std::nullopt;
+            }
+
+            if(cls == 1)
+            {
+                auto val_a = consume_next(in);
+
+                std::optional<uint32_t> extra_a;
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a);
+
+                if(!compiled_a.has_value())
+                    return "first argument failed to decode";
+
+                auto instr = construct_type_b(code, compiled_a.value());
+
+                out.push_back(instr);
+
+                if(extra_a.has_value())
+                {
+                    out.push_back(extra_a.value());
+                }
+            }
+
+            break;
+        }
+    }
+
+    return "Error not command";
 }
 
 #endif // BASE_ASM_HPP_INCLUDED
