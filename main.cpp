@@ -51,9 +51,10 @@ constexpr void constexpr_tests()
     //auto [v1, vextra] = decode_value("x", arg_pos::B);
 
     //constexpr auto val = assemble("set x, 10\n");
-    constexpr auto fval = assemble("set x, 10\n").value();
+    constexpr auto fval = assemble("set x, 10\nadd x, 1").value();
 
     static_assert(fval[0] == 0b1010110001100001);
+    static_assert(fval[1] == 0b1000100001100010);
 }
 
 int main()
