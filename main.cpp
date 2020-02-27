@@ -57,7 +57,7 @@ constexpr void constexpr_tests()
     static_assert(fval[1] == 0b1000100001100010);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     tests();
     constexpr_tests();

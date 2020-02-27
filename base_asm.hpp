@@ -50,6 +50,12 @@ constexpr uint32_t construct_type_b(uint32_t o, uint32_t a)
     return (o << 5) | (a << 10);
 }
 
+inline
+constexpr uint32_t construct_type_c(uint32_t o)
+{
+    return (o << 10);
+}
+
 namespace arg_pos
 {
     enum type
@@ -203,6 +209,8 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
         {"hwn", 1, 0x10},
         {"hwq", 1, 0x11},
         {"hwi", 1, 0x12},
+
+        {"brk", 2, 0x0},
     };
 
     auto consumed_name = consume_next(in);
@@ -266,6 +274,15 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
                 {
                     out.push_back(extra_a.value());
                 }
+
+                return std::nullopt;
+            }
+
+            if(cls == 2)
+            {
+                auto instr = construct_type_c(code);
+
+                out.push_back(instr);
 
                 return std::nullopt;
             }
