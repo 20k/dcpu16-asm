@@ -4,7 +4,7 @@
 
 void tests()
 {
-    std::string str("SET X, 10\nSET Y, 1\nADD X, Y");
+    std::string str = to_lower("SET X, 10\nSET Y, 1\nADD X, Y");
     std::string_view view = str;
 
     while(view.size() > 0)

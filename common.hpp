@@ -70,6 +70,31 @@ constexpr std::string_view consume_next(std::string_view& in)
 }
 
 inline
+constexpr char ascii_to_lower(char c)
+{
+    if(c >= 'A' && c <= 'Z')
+    {
+        return (c - 'A') + 'a';
+    }
+
+    return c;
+}
+
+inline
+std::string to_lower(std::string_view in)
+{
+    std::string ret;
+    ret.resize(in.size());
+
+    for(int i=0; i < (int)in.size(); i++)
+    {
+        ret[i] = ascii_to_lower(in[i]);
+    }
+
+    return ret;
+}
+
+inline
 constexpr bool is_label(std::string_view in)
 {
     return in.starts_with(':');
