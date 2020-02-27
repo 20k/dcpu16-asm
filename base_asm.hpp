@@ -148,6 +148,7 @@ struct stack_vector
     void push_back(const T& in)
     {
         svec[idx] = in;
+        idx++;
     }
 };
 
@@ -206,6 +207,9 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
     auto consumed_name = consume_next(in);
 
+    if(consumed_name.size() == 0)
+        return std::nullopt;
+
     for(auto [name, cls, code] : opcodes)
     {
         if(name == consumed_name)
@@ -262,9 +266,9 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
                 {
                     out.push_back(extra_a.value());
                 }
-            }
 
-            break;
+                return std::nullopt;
+            }
         }
     }
 
