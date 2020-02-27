@@ -6,6 +6,8 @@
 #include <array>
 #include <tuple>
 
+#define MEM_SIZE 0x10000
+
 inline
 constexpr std::optional<int> get_register_assembly_value_from_name(std::string_view in)
 {
@@ -63,8 +65,9 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
 
+        ///cannot return reg_opt, because otherwise it isn't constexpr due to optional lacking constexpr move
         if(reg_opt.has_value())
-            return reg_opt;
+            return reg_opt.value();
     }
 
     if(is_address(in))
@@ -135,6 +138,11 @@ struct stack_vector
 {
     std::array<T, 128> svec;
     size_t idx = 0;
+
+    constexpr stack_vector() : svec{}, idx(0)
+    {
+
+    }
 
     constexpr
     void push_back(const T& in)
@@ -261,6 +269,40 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
     }
 
     return "Error not command";
+}
+
+inline
+constexpr
+std::optional<std::array<uint16_t, MEM_SIZE>> assemble(std::string_view text)
+{
+    std::array<uint16_t, MEM_SIZE> ret = {};
+
+    uint32_t idx = 0;
+
+    while(text.size() > 0)
+    {
+        stack_vector<uint32_t> svec;
+
+        auto error_opt = add_opcode_with_prefix(text, svec);
+
+        for(uint32_t val = 0; val < svec.idx; val++)
+        {
+            if(val + idx >= MEM_SIZE)
+                return std::nullopt;
+
+            ret[val + idx] = svec.svec[val];
+        }
+
+        idx += svec.idx;
+
+        ///TODO, pass along error messages
+        if(error_opt.has_value())
+        {
+            return std::nullopt;
+        }
+    }
+
+    return ret;
 }
 
 #endif // BASE_ASM_HPP_INCLUDED
