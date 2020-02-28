@@ -93,6 +93,9 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         if(extracted == "sp")
             return 0x19;
 
+        // unimpl [register + next word]
+        // unimpl [sp + next word]
+
         if(is_constant(extracted))
         {
             out = get_constant(extracted);
