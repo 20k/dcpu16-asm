@@ -127,7 +127,7 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    if(iequal(argv[2], "-fselftest"))
+    if(iequal(argv[1], "-fselftest"))
     {
         tests();
         printf("Self tests passed");
