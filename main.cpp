@@ -1,7 +1,42 @@
-#include <iostream>
-
 #include "common.hpp"
 #include "base_asm.hpp"
+#include <string>
+
+inline
+std::string read_file(const std::string& file)
+{
+    FILE* f = fopen(file.c_str(), "r");
+
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if(fsize == 0)
+    {
+        fclose(f);
+        return "";
+    }
+
+    std::string ret;
+    ret.resize(fsize);
+
+    fread(&ret[0], 1, fsize, f);
+
+    return ret;
+}
+
+inline
+void write_all_bin(const std::string& fname, std::string_view str)
+{
+    FILE* f = fopen(fname.c_str(), "wb");
+
+    if(str.size() > 0)
+    {
+        fwrite(&str[0], str.size(), 1, f);
+    }
+
+    fclose(f);
+}
 
 void tests()
 {
@@ -11,7 +46,12 @@ void tests()
     {
         auto found = consume_next(view);
 
-        std::cout << "TOK " << found << std::endl;
+        printf("TOK ");
+
+        for(auto& i : found)
+            printf("%c", i);
+
+        printf("\n");
     }
 
     constexpr std::string_view test(" hi");
@@ -54,13 +94,13 @@ constexpr void constexpr_tests()
 
     constexpr auto fval = assemble("set x, 10\nadd x, 1").value();
 
-    static_assert(fval[0] == 0b1010110001100001);
-    static_assert(fval[1] == 0b1000100001100010);
+    static_assert(fval.mem[0] == 0b1010110001100001);
+    static_assert(fval.mem[1] == 0b1000100001100010);
 
     constexpr auto fval2 = assemble("SET X, 10\nADD X, 1").value();
 
-    static_assert(fval2[0] == 0b1010110001100001);
-    static_assert(fval2[1] == 0b1000100001100010);
+    static_assert(fval2.mem[0] == 0b1010110001100001);
+    static_assert(fval2.mem[1] == 0b1000100001100010);
 }
 
 int main(int argc, char* argv[])
@@ -71,16 +111,67 @@ int main(int argc, char* argv[])
         constexpr_tests();
     }*/
 
+    constexpr_tests();
+
     if(argc <= 1)
     {
-        printf("Usage: dcpu-16-asm.exe ./source [./out]");
+        printf("Usage: dcpu-16-asm.exe ./source [./out] [-fselftest]");
         return 0;
     }
 
-    for(int i=1; i < argc; i++)
+    if(iequal(argv[2], "-fselftest"))
+    {
+        tests();
+        printf("Self tests passed");
+        return 0;
+    }
+
+    std::string file = read_file(argv[1]);
+
+    auto out = assemble(file);
+
+    if(!out.has_value())
+    {
+        printf("Could not assemble. TODO: ERROR MESSAGES IMMEDIATELY\n");
+        return 1;
+    }
+
+    std::string_view write((char*)&out.value().mem[0], out.value().idx * sizeof(uint16_t) / sizeof(char));
+
+    if(argc == 2)
+    {
+        std::string out_name = std::string(argv[1]) + ".asm";
+
+        write_all_bin(out_name, write);
+
+        return 0;
+    }
+
+    if(argc == 3)
+    {
+        std::string out_name = std::string(argv[2]);
+
+        write_all_bin(out_name, write);
+
+        return 0;
+    }
+
+    /*for(int i=1; i < argc - 1; i++)
     {
         std::string_view view(argv[i]);
-    }
+        std::string_view next(argv[i + 1]);
+
+        if(view.starts_with("-f"))
+        {
+            std::cout << "Argument not recognised " << view << std::endl;
+            continue;
+        }
+
+        if(view.starts_with("-o"))
+        {
+
+        }
+    }*/
 
     return 0;
 }

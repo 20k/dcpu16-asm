@@ -295,13 +295,22 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
     return "Error not command";
 }
 
+struct return_info
+{
+    std::array<uint16_t, MEM_SIZE> mem = {};
+    uint16_t idx = 0;
+
+    constexpr return_info(){}
+};
+
 inline
 constexpr
-std::optional<std::array<uint16_t, MEM_SIZE>> assemble(std::string_view text)
+std::optional<return_info> assemble(std::string_view text)
 {
-    std::array<uint16_t, MEM_SIZE> ret = {};
+    /*std::array<uint16_t, MEM_SIZE> ret = {};
+    uint32_t idx = 0;*/
 
-    uint32_t idx = 0;
+    return_info rinfo;
 
     while(text.size() > 0)
     {
@@ -311,13 +320,13 @@ std::optional<std::array<uint16_t, MEM_SIZE>> assemble(std::string_view text)
 
         for(uint32_t val = 0; val < svec.idx; val++)
         {
-            if(val + idx >= MEM_SIZE)
+            if(val + rinfo.idx >= MEM_SIZE)
                 return std::nullopt;
 
-            ret[val + idx] = svec.svec[val];
+            rinfo.mem[val + rinfo.idx] = svec.svec[val];
         }
 
-        idx += svec.idx;
+        rinfo.idx += svec.idx;
 
         ///TODO, pass along error messages
         if(error_opt.has_value())
@@ -326,7 +335,7 @@ std::optional<std::array<uint16_t, MEM_SIZE>> assemble(std::string_view text)
         }
     }
 
-    return ret;
+    return rinfo;
 }
 
 #endif // BASE_ASM_HPP_INCLUDED
