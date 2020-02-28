@@ -80,7 +80,7 @@ constexpr char ascii_to_lower(char c)
     return c;
 }
 
-inline
+/*inline
 std::string to_lower(std::string_view in)
 {
     std::string ret;
@@ -92,6 +92,21 @@ std::string to_lower(std::string_view in)
     }
 
     return ret;
+}*/
+
+inline
+constexpr bool iequal(std::string_view in1, std::string_view in2)
+{
+    if(in1.size() != in2.size())
+        return false;
+
+    for(size_t i = 0; i < in1.size(); i++)
+    {
+        if(ascii_to_lower(in1[i]) != ascii_to_lower(in2[i]))
+            return false;
+    }
+
+    return true;
 }
 
 inline

@@ -5,8 +5,7 @@
 
 void tests()
 {
-    std::string str = to_lower("SET X, 10\nSET Y, 1\nADD X, Y");
-    std::string_view view = str;
+    std::string_view view = "SET X, 10\nSET Y, 1\nADD X, Y";
 
     while(view.size() > 0)
     {
@@ -51,16 +50,37 @@ constexpr void constexpr_tests()
     //auto [v1, vextra] = decode_value("x", arg_pos::B);
 
     //constexpr auto val = assemble("set x, 10\n");
+
+
     constexpr auto fval = assemble("set x, 10\nadd x, 1").value();
 
     static_assert(fval[0] == 0b1010110001100001);
     static_assert(fval[1] == 0b1000100001100010);
+
+    constexpr auto fval2 = assemble("SET X, 10\nADD X, 1").value();
+
+    static_assert(fval2[0] == 0b1010110001100001);
+    static_assert(fval2[1] == 0b1000100001100010);
 }
 
 int main(int argc, char* argv[])
 {
-    tests();
-    constexpr_tests();
+    /*if(argc == 1)
+    {
+        tests();
+        constexpr_tests();
+    }*/
+
+    if(argc <= 1)
+    {
+        printf("Usage: dcpu-16-asm.exe ./source [./out]");
+        return 0;
+    }
+
+    for(int i=1; i < argc; i++)
+    {
+        std::string_view view(argv[i]);
+    }
 
     return 0;
 }

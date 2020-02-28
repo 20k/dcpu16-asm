@@ -11,28 +11,28 @@
 inline
 constexpr std::optional<int> get_register_assembly_value_from_name(std::string_view in)
 {
-    if(in == "a")
+    if(iequal(in, "a"))
         return 0;
 
-    if(in == "b")
+    if(iequal(in, "b"))
         return 1;
 
-    if(in == "c")
+    if(iequal(in, "c"))
         return 2;
 
-    if(in == "x")
+    if(iequal(in, "x"))
         return 3;
 
-    if(in == "y")
+    if(iequal(in, "y"))
         return 4;
 
-    if(in == "z")
+    if(iequal(in, "z"))
         return 5;
 
-    if(in == "i")
+    if(iequal(in, "i"))
         return 6;
 
-    if(in == "j")
+    if(iequal(in, "j"))
         return 7;
 
     return std::nullopt;
@@ -87,10 +87,10 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
             return 0x08 + extracted_reg_opt.value();
         }
 
-        if(extracted == "--sp" || extracted == "sp++")
+        if(iequal(extracted, "--sp") || iequal(extracted, "sp++"))
             return 0x18;
 
-        if(extracted == "sp")
+        if(iequal(extracted, "sp"))
             return 0x19;
 
         // unimpl [register + next word]
@@ -103,16 +103,16 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         }
     }
 
-    if(in == "push" || in == "pop")
+    if(iequal(in, "push") || iequal(in, "pop"))
         return 0x18;
 
-    if(in == "sp")
+    if(iequal(in, "sp"))
         return 0x1b;
 
-    if(in == "pc")
+    if(iequal(in, "pc"))
         return 0x1c;
 
-    if(in == "ex")
+    if(iequal(in, "ex"))
         return 0x1d;
 
     if(is_constant(in))
@@ -223,7 +223,7 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
     for(auto [name, cls, code] : opcodes)
     {
-        if(name == consumed_name)
+        if(iequal(name, consumed_name))
         {
             if(cls == 0)
             {
