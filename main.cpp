@@ -38,6 +38,14 @@ void write_all_bin(const std::string& fname, std::string_view str)
     fclose(f);
 }
 
+void print_sv(std::string_view in)
+{
+    for(auto i : in)
+    {
+        putchar(i);
+    }
+}
+
 void tests()
 {
     std::string_view view = "SET X, 10\nSET Y, 1\nADD X, Y";
@@ -92,12 +100,12 @@ constexpr void constexpr_tests()
     //constexpr auto val = assemble("set x, 10\n");
 
 
-    constexpr auto fval = assemble("set x, 10\nadd x, 1").value();
+    constexpr auto fval = assemble("set x, 10\nadd x, 1").first.value();
 
     static_assert(fval.mem[0] == 0b1010110001100001);
     static_assert(fval.mem[1] == 0b1000100001100010);
 
-    constexpr auto fval2 = assemble("SET X, 10\nADD X, 1").value();
+    constexpr auto fval2 = assemble("SET X, 10\nADD X, 1").first.value();
 
     static_assert(fval2.mem[0] == 0b1010110001100001);
     static_assert(fval2.mem[1] == 0b1000100001100010);
@@ -128,15 +136,17 @@ int main(int argc, char* argv[])
 
     std::string file = read_file(argv[1]);
 
-    auto out = assemble(file);
+    auto [data_opt, err] = assemble(file);
 
-    if(!out.has_value())
+    if(!data_opt.has_value())
     {
-        printf("Could not assemble. TODO: ERROR MESSAGES IMMEDIATELY\n");
+        printf("Could not assemble. Err: ");
+        print_sv(err);
+
         return 1;
     }
 
-    std::string_view write((char*)&out.value().mem[0], out.value().idx * sizeof(uint16_t) / sizeof(char));
+    std::string_view write((char*)&data_opt.value().mem[0], data_opt.value().idx * sizeof(uint16_t) / sizeof(char));
 
     if(argc == 2)
     {

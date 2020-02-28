@@ -305,11 +305,8 @@ struct return_info
 
 inline
 constexpr
-std::optional<return_info> assemble(std::string_view text)
+std::pair<std::optional<return_info>, std::string_view> assemble(std::string_view text)
 {
-    /*std::array<uint16_t, MEM_SIZE> ret = {};
-    uint32_t idx = 0;*/
-
     return_info rinfo;
 
     while(text.size() > 0)
@@ -321,7 +318,7 @@ std::optional<return_info> assemble(std::string_view text)
         for(uint32_t val = 0; val < svec.idx; val++)
         {
             if(val + rinfo.idx >= MEM_SIZE)
-                return std::nullopt;
+                return {std::nullopt, "Memory overflow"};
 
             rinfo.mem[val + rinfo.idx] = svec.svec[val];
         }
@@ -331,11 +328,11 @@ std::optional<return_info> assemble(std::string_view text)
         ///TODO, pass along error messages
         if(error_opt.has_value())
         {
-            return std::nullopt;
+            return {std::nullopt, error_opt.value()};
         }
     }
 
-    return rinfo;
+    return {rinfo, ""};
 }
 
 #endif // BASE_ASM_HPP_INCLUDED
