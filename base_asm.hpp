@@ -5,6 +5,7 @@
 #include <string_view>
 #include <array>
 #include <tuple>
+#include "stack_vector.hpp"
 
 #define MEM_SIZE 0x10000
 
@@ -142,25 +143,6 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
     return std::nullopt;
 }
 
-template<typename T>
-struct stack_vector
-{
-    std::array<T, 128> svec;
-    size_t idx = 0;
-
-    constexpr stack_vector() : svec{}, idx(0)
-    {
-
-    }
-
-    constexpr
-    void push_back(const T& in)
-    {
-        svec[idx] = in;
-        idx++;
-    }
-};
-
 struct opcode
 {
     std::string_view view;
@@ -170,7 +152,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint32_t>& out)
+std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint32_t, 128>& out)
 {
     opcode opcodes[] =
     {
@@ -311,7 +293,7 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
     while(text.size() > 0)
     {
-        stack_vector<uint32_t> svec;
+        stack_vector<uint32_t, 128> svec;
 
         auto error_opt = add_opcode_with_prefix(text, svec);
 
