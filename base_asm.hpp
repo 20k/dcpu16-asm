@@ -6,6 +6,7 @@
 #include <array>
 #include <tuple>
 #include "stack_vector.hpp"
+#include "shared.hpp"
 
 #define MEM_SIZE 0x10000
 
@@ -55,15 +56,6 @@ inline
 constexpr uint32_t construct_type_c(uint32_t o)
 {
     return (o << 10);
-}
-
-namespace arg_pos
-{
-    enum type
-    {
-        A,
-        B,
-    };
 }
 
 inline
