@@ -7,6 +7,7 @@
 #include <tuple>
 #include "stack_vector.hpp"
 #include "shared.hpp"
+#include "util.hpp"
 
 #define MEM_SIZE 0x10000
 
@@ -271,8 +272,7 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
 struct return_info
 {
-    std::array<uint16_t, MEM_SIZE> mem = {};
-    uint16_t idx = 0;
+    stack_vector<uint16_t, MEM_SIZE> mem;
 
     constexpr return_info(){}
 };
@@ -291,13 +291,13 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
         for(uint32_t val = 0; val < svec.idx; val++)
         {
-            if(val + rinfo.idx >= MEM_SIZE)
+            if(val + rinfo.mem.idx >= MEM_SIZE)
                 return {std::nullopt, "Memory overflow"};
 
-            rinfo.mem[val + rinfo.idx] = svec.svec[val];
+            rinfo.mem.svec[val + rinfo.mem.idx] = svec.svec[val];
         }
 
-        rinfo.idx += svec.idx;
+        rinfo.mem.idx += svec.idx;
 
         ///TODO, pass along error messages
         if(error_opt.has_value())
