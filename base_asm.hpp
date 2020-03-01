@@ -189,6 +189,7 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
         {"hwi", 1, 0x12},
 
         {"brk", 2, 0x0},
+        // could have an instruction that swaps modes into extended alt proposal mode
     };
 
     auto consumed_name = consume_next(in);
