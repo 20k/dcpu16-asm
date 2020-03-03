@@ -60,7 +60,7 @@ constexpr uint32_t construct_type_c(uint32_t o)
 }
 
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<uint32_t>& out)
+constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out)
 {
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
@@ -145,7 +145,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint32_t, 128>& out)
+std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint16_t, 128>& out)
 {
     opcode opcodes[] =
     {
@@ -206,10 +206,10 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
                 auto val_b = consume_next(in);
                 auto val_a = consume_next(in);
 
-                std::optional<uint32_t> extra_b;
+                std::optional<int32_t> extra_b;
                 auto compiled_b = decode_value(val_b, arg_pos::B, extra_b);
 
-                std::optional<uint32_t> extra_a;
+                std::optional<int32_t> extra_a;
                 auto compiled_a = decode_value(val_a, arg_pos::A, extra_a);
 
                 if(!compiled_b.has_value())
@@ -224,12 +224,22 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
                 if(extra_a.has_value())
                 {
-                    out.push_back(extra_a.value());
+                    uint32_t promote_a = extra_a.value();
+
+                    if(promote_a >= 65536)
+                        return "second argument >= UINT_MAX or < INT_MIN";
+
+                    out.push_back(promote_a);
                 }
 
                 if(extra_b.has_value())
                 {
-                    out.push_back(extra_b.value());
+                    uint32_t promote_b = extra_b.value();
+
+                    if(promote_b >= 65536)
+                        return "first argument >= UINT_MAX or < INT_MIN";
+
+                    out.push_back(promote_b);
                 }
 
                 return std::nullopt;
@@ -239,7 +249,7 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
             {
                 auto val_a = consume_next(in);
 
-                std::optional<uint32_t> extra_a;
+                std::optional<int32_t> extra_a;
                 auto compiled_a = decode_value(val_a, arg_pos::A, extra_a);
 
                 if(!compiled_a.has_value())
@@ -251,7 +261,12 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
                 if(extra_a.has_value())
                 {
-                    out.push_back(extra_a.value());
+                    uint32_t promote_a = extra_a.value();
+
+                    if(promote_a >= 65536)
+                        return "first argument >= UINT_MAX or < INT_MIN";
+
+                    out.push_back(promote_a);
                 }
 
                 return std::nullopt;
@@ -286,7 +301,7 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
     while(text.size() > 0)
     {
-        stack_vector<uint32_t, 128> svec;
+        stack_vector<uint16_t, 128> svec;
 
         auto error_opt = add_opcode_with_prefix(text, svec);
 

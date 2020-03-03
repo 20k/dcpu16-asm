@@ -1,6 +1,7 @@
 #include "util.hpp"
 #include "base_asm.hpp"
 #include <string>
+#include <assert.h>
 
 inline
 std::string read_file(const std::string& file)
@@ -48,23 +49,32 @@ void print_sv(std::string_view in)
 
 void tests()
 {
-    std::string_view view = "SET X, 10\nSET Y, 1\nADD X, Y";
-
-    while(view.size() > 0)
     {
-        auto found = consume_next(view);
+        std::string_view view = "SET X, 10\nSET Y, 1\nADD X, Y";
 
-        printf("TOK ");
+        while(view.size() > 0)
+        {
+            auto found = consume_next(view);
 
-        for(auto& i : found)
-            printf("%c", i);
+            printf("TOK ");
 
-        printf("\n");
+            for(auto& i : found)
+                printf("%c", i);
+
+            printf("\n");
+        }
+
+        constexpr std::string_view test(" hi");
+
+        static_assert(trim_start(test, [](char c){return c == ' ';}) == "hi");
     }
 
-    constexpr std::string_view test(" hi");
+    {
+        std::string_view test = "SET X, 65539";
+        auto [binary_opt, err] = assemble(test);
 
-    static_assert(trim_start(test, [](char c){return c == ' ';}) == "hi");
+        assert(!binary_opt.has_value());
+    }
 }
 
 constexpr std::string_view fcheck(std::string_view in)
