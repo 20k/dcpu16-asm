@@ -102,13 +102,13 @@ constexpr void constexpr_tests()
 
     constexpr auto fval = assemble("set x, 10\nadd x, 1").first.value();
 
-    static_assert(fval.mem[0] == 0b1010110001100001);
-    static_assert(fval.mem[1] == 0b1000100001100010);
+    static_assert(fval.mem.svec[0] == 0b1010110001100001);
+    static_assert(fval.mem.svec[1] == 0b1000100001100010);
 
     constexpr auto fval2 = assemble("SET X, 10\nADD X, 1").first.value();
 
-    static_assert(fval2.mem[0] == 0b1010110001100001);
-    static_assert(fval2.mem[1] == 0b1000100001100010);
+    static_assert(fval2.mem.svec[0] == 0b1010110001100001);
+    static_assert(fval2.mem.svec[1] == 0b1000100001100010);
 }
 
 int main(int argc, char* argv[])
@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    std::string_view write((char*)&data_opt.value().mem[0], data_opt.value().idx * sizeof(uint16_t) / sizeof(char));
+    std::string_view write((char*)&data_opt.value().mem.svec[0], data_opt.value().mem.idx * sizeof(uint16_t) / sizeof(char));
 
     if(argc == 2)
     {
