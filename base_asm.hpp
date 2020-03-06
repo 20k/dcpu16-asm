@@ -145,7 +145,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint16_t, 128>& out)
+std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out)
 {
     opcode opcodes[] =
     {
@@ -301,21 +301,8 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
     while(text.size() > 0)
     {
-        stack_vector<uint16_t, 128> svec;
+        auto error_opt = add_opcode_with_prefix(text, rinfo.mem);
 
-        auto error_opt = add_opcode_with_prefix(text, svec);
-
-        for(uint32_t val = 0; val < svec.idx; val++)
-        {
-            if(val + rinfo.mem.idx >= MEM_SIZE)
-                return {std::nullopt, "Memory overflow"};
-
-            rinfo.mem.svec[val + rinfo.mem.idx] = svec.svec[val];
-        }
-
-        rinfo.mem.idx += svec.idx;
-
-        ///TODO, pass along error messages
         if(error_opt.has_value())
         {
             return {std::nullopt, error_opt.value()};

@@ -7,7 +7,8 @@ struct stack_vector
     std::array<T, N> svec;
     size_t idx = 0;
 
-    constexpr stack_vector() : svec{}, idx(0)
+    constexpr
+    stack_vector() : svec{}, idx(0)
     {
 
     }
@@ -17,6 +18,12 @@ struct stack_vector
     {
         svec[idx] = in;
         idx++;
+    }
+
+    constexpr
+    size_t size()
+    {
+        return idx;
     }
 };
 
