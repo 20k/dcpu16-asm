@@ -62,6 +62,8 @@ constexpr uint32_t construct_type_c(uint32_t o)
 // so
 // create a table of MAX_WHATEVER long which contains byte -> label mapping
 // then figure out a way to sub label pc value back in to instructions
+// could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
+// then sub them in afterwards
 inline
 constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out)
 {
