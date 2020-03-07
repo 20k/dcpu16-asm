@@ -42,7 +42,6 @@
 			<Add option="-std=c++2a" />
 		</Compiler>
 		<Unit filename="base_asm.hpp" />
-		<Unit filename="common.hpp" />
 		<Unit filename="main.cpp" />
 		<Unit filename="shared.hpp" />
 		<Unit filename="stack_vector.hpp" />
