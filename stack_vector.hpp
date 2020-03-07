@@ -25,6 +25,18 @@ struct stack_vector
     {
         return idx;
     }
+
+    constexpr
+    auto begin()
+    {
+        return svec.begin();
+    }
+
+    constexpr
+    auto end()
+    {
+        return svec.begin() + idx;
+    }
 };
 
 #endif // STACK_VECTOR_HPP_INCLUDED

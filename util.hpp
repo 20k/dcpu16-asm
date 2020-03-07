@@ -110,7 +110,7 @@ constexpr bool iequal(std::string_view in1, std::string_view in2)
 }
 
 inline
-constexpr bool is_label(std::string_view in)
+constexpr bool is_label_definition(std::string_view in)
 {
     return in.starts_with(':');
 }
@@ -258,6 +258,36 @@ constexpr int get_constant(std::string_view in)
         return -n;
     else
         return n;
+}
+
+inline
+constexpr bool isalnum_c(char in)
+{
+    if(in >= 'a' && in <= 'z')
+        return true;
+
+    if(in >= 'A' && in <= 'Z')
+        return true;
+
+    if(in >= '0' && in <= '9')
+        return true;
+
+    if(in == '_')
+        return true;
+
+    return false;
+}
+
+inline
+constexpr bool is_label_reference(std::string_view in)
+{
+    for(auto& i : in)
+    {
+        if(!isalnum_c(i))
+            return false;
+    }
+
+    return true;
 }
 
 inline

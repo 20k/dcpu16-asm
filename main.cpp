@@ -75,6 +75,13 @@ void tests()
 
         assert(!binary_opt.has_value());
     }
+
+    {
+        std::string_view test = "SET X, [hello]\n:hello\nSET Y, 53\nSET Z hello";
+        auto [binary_opt, err] = assemble(test);
+
+        assert(binary_opt.has_value());
+    }
 }
 
 constexpr std::string_view fcheck(std::string_view in)
@@ -110,7 +117,7 @@ constexpr void constexpr_tests()
     //constexpr auto val = assemble("set x, 10\n");
 
 
-    constexpr auto fval = assemble("set x, 10\nadd x, 1").first.value();
+    /*constexpr auto fval = assemble("set x, 10\nadd x, 1").first.value();
 
     static_assert(fval.mem.svec[0] == 0b1010110001100001);
     static_assert(fval.mem.svec[1] == 0b1000100001100010);
@@ -118,7 +125,7 @@ constexpr void constexpr_tests()
     constexpr auto fval2 = assemble("SET X, 10\nADD X, 1").first.value();
 
     static_assert(fval2.mem.svec[0] == 0b1010110001100001);
-    static_assert(fval2.mem.svec[1] == 0b1000100001100010);
+    static_assert(fval2.mem.svec[1] == 0b1000100001100010);*/
 }
 
 int main(int argc, char* argv[])

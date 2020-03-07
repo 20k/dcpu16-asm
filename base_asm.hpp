@@ -59,13 +59,25 @@ constexpr uint32_t construct_type_c(uint32_t o)
     return (o << 10);
 }
 
+struct label
+{
+    uint16_t offset = 0;
+    std::string_view name = "";
+};
+
+struct symbol_table
+{
+    stack_vector<label, 1024> usages;
+    stack_vector<label, 1024> definitions;
+};
+
 // so
 // create a table of MAX_WHATEVER long which contains byte -> label mapping
 // then figure out a way to sub label pc value back in to instructions
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out)
+constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label)
 {
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
@@ -98,6 +110,13 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         if(is_constant(extracted))
         {
             out = get_constant(extracted);
+            return 0x1e;
+        }
+
+        if(is_label_reference(extracted))
+        {
+            out = 0;
+            is_label = extracted;
             return 0x1e;
         }
     }
@@ -138,6 +157,13 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         }
     }
 
+    if(is_label_reference(in))
+    {
+        out = 0;
+        is_label = in;
+        return 0x1f;
+    }
+
     return std::nullopt;
 }
 
@@ -150,7 +176,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out)
+std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out)
 {
     opcode opcodes[] =
     {
@@ -202,6 +228,20 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
     if(consumed_name.size() == 0)
         return std::nullopt;
 
+    if(is_label_definition(consumed_name))
+    {
+        consumed_name.remove_prefix(1);
+
+        auto trimmed = trim_start(consumed_name, [](char c) {return c == ' ' || c == '\n' || c == ','; });
+
+        label l;
+        l.name = trimmed;
+        l.offset = out.size();
+
+        sym.definitions.push_back(l);
+        return std::nullopt;
+    }
+
     for(auto [name, cls, code] : opcodes)
     {
         if(iequal(name, consumed_name))
@@ -212,10 +252,12 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
                 auto val_a = consume_next(in);
 
                 std::optional<int32_t> extra_b;
-                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b);
+                std::optional<std::string_view> is_label_b;
+                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b);
 
                 std::optional<int32_t> extra_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a);
+                std::optional<std::string_view> is_label_a;
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a);
 
                 if(!compiled_b.has_value())
                     return "first argument failed to decode";
@@ -234,6 +276,15 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
                     if(promote_a >= 65536)
                         return "second argument >= UINT_MAX or < INT_MIN";
 
+                    if(is_label_a.has_value())
+                    {
+                        label l;
+                        l.name = is_label_a.value();
+                        l.offset = out.size();
+
+                        sym.usages.push_back(l);
+                    }
+
                     out.push_back(promote_a);
                 }
 
@@ -243,6 +294,15 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
                     if(promote_b >= 65536)
                         return "first argument >= UINT_MAX or < INT_MIN";
+
+                    if(is_label_b.has_value())
+                    {
+                        label l;
+                        l.name = is_label_b.value();
+                        l.offset = out.size();
+
+                        sym.usages.push_back(l);
+                    }
 
                     out.push_back(promote_b);
                 }
@@ -255,7 +315,8 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
                 auto val_a = consume_next(in);
 
                 std::optional<int32_t> extra_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a);
+                std::optional<std::string_view> is_label_a;
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a);
 
                 if(!compiled_a.has_value())
                     return "first argument failed to decode";
@@ -270,6 +331,15 @@ std::optional<std::string_view> add_opcode_with_prefix(std::string_view& in, sta
 
                     if(promote_a >= 65536)
                         return "first argument >= UINT_MAX or < INT_MIN";
+
+                    if(is_label_a.has_value())
+                    {
+                        label l;
+                        l.name = is_label_a.value();
+                        l.offset = out.size();
+
+                        sym.usages.push_back(l);
+                    }
 
                     out.push_back(promote_a);
                 }
@@ -303,14 +373,49 @@ constexpr
 std::pair<std::optional<return_info>, std::string_view> assemble(std::string_view text)
 {
     return_info rinfo;
+    symbol_table sym;
 
     while(text.size() > 0)
     {
-        auto error_opt = add_opcode_with_prefix(text, rinfo.mem);
+        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem);
 
         if(error_opt.has_value())
         {
             return {std::nullopt, error_opt.value()};
+        }
+    }
+
+    /*if(sym.definitions.size() > 0 && sym.usages.size() > 0)
+    {
+        if(!std::is_constant_evaluated())
+        {
+            std::sort(sym.definitions.begin(), sym.definitions.end(), [](const label& l1, const label& l2) constexpr {return l1.name < l2.name;});
+            std::sort(sym.usages.begin(), sym.usages.end(), [](const label& l1, const label& l2) constexpr {return l1.name < l2.name;});
+        }
+        else
+        {
+
+        }
+    }*/
+
+    for(label& j : sym.usages)
+    {
+        bool found = false;
+
+        for(label& i : sym.definitions)
+        {
+            if(j.name != i.name)
+                continue;
+
+            rinfo.mem.svec[j.offset] = i.offset;
+
+            found = true;
+            break;
+        }
+
+        if(!found)
+        {
+            return {std::nullopt, "Label used with no definition"};
         }
     }
 
