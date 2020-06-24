@@ -8,6 +8,7 @@ struct stack_vector
 {
     std::array<T, N> svec;
     size_t idx = 0;
+    static constexpr int max_size = N;
 
     constexpr
     stack_vector() : svec{}, idx(0)
