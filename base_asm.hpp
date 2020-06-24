@@ -206,6 +206,8 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         {"ifu", 0, 0x17},
         {"adx", 0, 0x1a},
         {"sbx", 0, 0x1b},
+        {"snd", 0, 0x1c}, ///extension for multiprocessor. sends a value to a piece of hardware
+        {"rcv", 0, 0x1d}, ///extension for multiprocessor. receives a value from a piece of hardware
         {"sti", 0, 0x1e},
         {"std", 0, 0x1f},
 
