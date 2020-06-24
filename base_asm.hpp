@@ -220,6 +220,9 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         {"hwn", 1, 0x10},
         {"hwq", 1, 0x11},
         {"hwi", 1, 0x12},
+        {"ifw", 1, 0x1a}, ///extension for multiprocessor. only executes next instruction if the hwid is waiting to write a value
+        {"ifr", 1, 0x1b}, ///extension for multiprocessor. only executes next instruction if the hwid is waiting to read a value
+
 
         {"brk", 2, 0x0},
         // could have an instruction that swaps modes into extended alt proposal mode
