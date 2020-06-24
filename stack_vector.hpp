@@ -1,6 +1,8 @@
 #ifndef STACK_VECTOR_HPP_INCLUDED
 #define STACK_VECTOR_HPP_INCLUDED
 
+#include <array>
+
 template<typename T, int N>
 struct stack_vector
 {
