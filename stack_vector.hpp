@@ -36,6 +36,12 @@ struct stack_vector
     }
 
     constexpr
+    T& operator[](std::size_t idx)
+    {
+        return svec[idx];
+    }
+
+    constexpr
     size_t size()
     {
         return idx;
