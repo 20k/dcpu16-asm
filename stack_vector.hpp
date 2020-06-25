@@ -24,6 +24,18 @@ struct stack_vector
     }
 
     constexpr
+    T& emplace_back()
+    {
+        svec[idx] = T();
+
+        T& val = svec[idx];
+
+        idx++;
+
+        return val;
+    }
+
+    constexpr
     size_t size()
     {
         return idx;
