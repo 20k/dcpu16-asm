@@ -1,11 +1,14 @@
 #ifndef STACK_VECTOR_HPP_INCLUDED
 #define STACK_VECTOR_HPP_INCLUDED
 
+#include <array>
+
 template<typename T, int N>
 struct stack_vector
 {
     std::array<T, N> svec;
     size_t idx = 0;
+    static constexpr int max_size = N;
 
     constexpr
     stack_vector() : svec{}, idx(0)
@@ -18,6 +21,24 @@ struct stack_vector
     {
         svec[idx] = in;
         idx++;
+    }
+
+    constexpr
+    T& emplace_back()
+    {
+        svec[idx] = T();
+
+        T& val = svec[idx];
+
+        idx++;
+
+        return val;
+    }
+
+    constexpr
+    T& operator[](std::size_t idx)
+    {
+        return svec[idx];
     }
 
     constexpr
