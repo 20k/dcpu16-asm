@@ -39,5 +39,5 @@
 {name:"HWI", cycle:4, class:"b", opcode:18, category:"hardware", signed:false, description:"HWI a : Sends an interrupt to hardware a"},
 {name:"IFW", cycle:2, class:"b", opcode:26, category:"control", signed:false, description:"IFW a : Performs next instruction only if the hardware identified by a is waiting to write a value"},
 {name:"IFR", cycle:2, class:"b", opcode:27, category:"control", signed:false, description:"IFR a : Performs next instruction only if the hardware identified by a is waiting to read a value"},
-{name:"BRK", cycle:1, class:"c", opcode:0, category:"control", signed:false, description:"BRK : Terminates execution"},
+{name:"BRK", cycle:1, class:"c", opcode:0, category:"control", signed:false, description:"BRK : Terminates execution"}
 ]
