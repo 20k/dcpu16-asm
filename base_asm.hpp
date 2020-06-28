@@ -368,6 +368,7 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
 struct return_info
 {
     stack_vector<uint16_t, MEM_SIZE> mem;
+    stack_vector<uint16_t, MEM_SIZE> translation_map;
 
     constexpr return_info(){}
 };
@@ -379,9 +380,21 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
     return_info rinfo;
     symbol_table sym;
 
+    size_t start_size = text.size();
+    size_t last_mem_size = 0;
+
     while(text.size() > 0)
     {
+        size_t offset = start_size - text.size();
+
         auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem);
+
+        for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
+        {
+            rinfo.translation_map[i] = offset;
+        }
+
+        last_mem_size = rinfo.mem.size();
 
         if(error_opt.has_value())
         {
