@@ -11,6 +11,11 @@
 
 #define MEM_SIZE 0x10000
 
+bool should_prune(char c)
+{
+    return c == ' ' || c == '\n' || c == ',';
+}
+
 inline
 constexpr std::optional<int> get_register_assembly_value_from_name(std::string_view in)
 {
@@ -386,6 +391,9 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
     while(text.size() > 0)
     {
         size_t offset = start_size - text.size();
+
+        //while(offset < text.size() && should_prune(text[offset]))
+        //    offset++;
 
         auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem);
 
