@@ -211,8 +211,8 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         {"ifu", 0, 0x17},
         {"adx", 0, 0x1a},
         {"sbx", 0, 0x1b},
-        {"snd", 0, 0x1c}, ///extension for multiprocessor. sends a value to a piece of hardware
-        {"rcv", 0, 0x1d}, ///extension for multiprocessor. receives a value from a piece of hardware
+        {"snd", 0, 0x1c}, ///extension for multiprocessor. sends a value on a channel
+        {"rcv", 0, 0x1d}, ///extension for multiprocessor. receives a value on a channels
         {"sti", 0, 0x1e},
         {"std", 0, 0x1f},
 
@@ -225,8 +225,8 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         {"hwn", 1, 0x10},
         {"hwq", 1, 0x11},
         {"hwi", 1, 0x12},
-        {"ifw", 1, 0x1a}, ///extension for multiprocessor. only executes next instruction if the hwid is waiting to write a value
-        {"ifr", 1, 0x1b}, ///extension for multiprocessor. only executes next instruction if the hwid is waiting to read a value
+        {"ifw", 1, 0x1a}, ///extension for multiprocessor. only executes next instruction if the channel is waiting to write a value
+        {"ifr", 1, 0x1b}, ///extension for multiprocessor. only executes next instruction if the channel is waiting to read a value
 
         {"brk", 2, 0x0},
         // could have an instruction that swaps modes into extended alt proposal mode
@@ -407,6 +407,18 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
         if(error_opt.has_value())
         {
             return {std::nullopt, error_opt.value()};
+        }
+    }
+
+    int last_val = rinfo.translation_map.size();
+
+    if(last_val > 0)
+    {
+        int prev_val = last_val - 1;
+
+        for(int i=rinfo.translation_map.size(); i < rinfo.translation_map.max_size; i++)
+        {
+            rinfo.translation_map[i] = rinfo.translation_map[prev_val];
         }
     }
 
