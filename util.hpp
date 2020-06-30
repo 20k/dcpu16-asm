@@ -56,6 +56,19 @@ constexpr std::string_view consume_next(std::string_view& in)
         return trimmed;
     }
 
+    if(trimmed[0] == ';')
+    {
+        size_t next = std::min(trimmed.find_first_of("\n"), trimmed.size());
+
+        if(next == trimmed.size())
+        {
+            in = trimmed;
+            return trimmed;
+        }
+
+        trimmed.remove_prefix(next + 1);
+    }
+
     size_t next = std::min(trimmed.find_first_of(",\n "), trimmed.size());
 
     auto first = trimmed;

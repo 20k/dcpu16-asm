@@ -11,6 +11,9 @@
 
 #define MEM_SIZE 0x10000
 
+///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
+///https://github.com/ddevault/organic
+
 bool should_prune(char c)
 {
     return c == ' ' || c == '\n' || c == ',';
