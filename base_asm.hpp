@@ -70,10 +70,35 @@ struct label
     std::string_view name = "";
 };
 
+struct define
+{
+    uint16_t value = 0;
+    std::string_view name = "";
+};
+
 struct symbol_table
 {
     stack_vector<label, 1024> usages;
     stack_vector<label, 1024> definitions;
+    stack_vector<define, 1024> defines;
+
+    constexpr
+    std::optional<uint16_t> get_symbol_definition(std::string_view name)
+    {
+        for(int i=0; i < definitions.size(); i++)
+        {
+            if(definitions[i].name == name)
+                return definitions[i].offset;
+        }
+
+        for(int i=0; i < defines.size(); i++)
+        {
+            if(defines[i].name == name)
+                return defines[i].value;
+        }
+
+        return std::nullopt;
+    }
 };
 
 // so
@@ -82,7 +107,7 @@ struct symbol_table
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label)
+constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, symbol_table& sym)
 {
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
@@ -120,6 +145,14 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
         if(is_label_reference(extracted))
         {
+            auto test_val_opt = sym.get_symbol_definition(extracted);
+
+            if(test_val_opt.has_value())
+            {
+                out = test_val_opt.value();
+                return 0x1e;
+            }
+
             out = 0;
             is_label = extracted;
             return 0x1e;
@@ -164,6 +197,14 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
     if(is_label_reference(in))
     {
+        auto test_val_opt = sym.get_symbol_definition(in);
+
+        if(test_val_opt.has_value())
+        {
+            out = test_val_opt.value();
+            return 0x1f;
+        }
+
         out = 0;
         is_label = in;
         return 0x1f;
@@ -251,6 +292,25 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         return std::nullopt;
     }
 
+    if(iequal(".def", consumed_name) || iequal("def", consumed_name))
+    {
+        auto label_name = consume_next(in);
+        auto label_value = consume_next(in);
+
+        if(!is_constant(label_value))
+            return ".def value must be a constant";
+
+        uint16_t val = get_constant(label_value);
+
+        define d;
+        d.name = label_name;
+        d.value = val;
+
+        sym.defines.push_back(d);
+
+        return std::nullopt;
+    }
+
     for(auto [name, cls, code] : opcodes)
     {
         if(iequal(name, consumed_name))
@@ -262,11 +322,11 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
 
                 std::optional<int32_t> extra_b;
                 std::optional<std::string_view> is_label_b;
-                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b);
+                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, sym);
 
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a);
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, sym);
 
                 if(!compiled_b.has_value())
                     return "first argument failed to decode";
@@ -325,7 +385,7 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
 
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a);
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, sym);
 
                 if(!compiled_a.has_value())
                     return "first argument failed to decode";
