@@ -311,6 +311,30 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         return std::nullopt;
     }
 
+    if(iequal(".dat", consumed_name) || iequal("dat", consumed_name))
+    {
+        auto value = consume_next(in);
+
+        uint16_t fval = 0;
+
+        if(is_label_reference(value) && sym.get_symbol_definition(value).has_value())
+        {
+            fval = sym.get_symbol_definition(value).value();
+        }
+        else if(is_constant(value))
+        {
+            fval = get_constant(value);
+        }
+        else
+        {
+            return "Bad .dat, must be constant or label or definition";
+        }
+
+        out.push_back(fval);
+
+        return std::nullopt;
+    }
+
     for(auto [name, cls, code] : opcodes)
     {
         if(iequal(name, consumed_name))
