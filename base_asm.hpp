@@ -486,7 +486,8 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
         for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
         {
-            rinfo.translation_map[i] = offset;
+            //rinfo.translation_map[i] = offset;
+            rinfo.translation_map.push_back(offset);
         }
 
         last_mem_size = rinfo.mem.size();
