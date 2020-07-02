@@ -88,13 +88,13 @@ struct symbol_table
     constexpr
     std::optional<uint16_t> get_symbol_definition(std::string_view name)
     {
-        for(int i=0; i < definitions.size(); i++)
+        for(int i=0; i < (int)definitions.size(); i++)
         {
             if(definitions[i].name == name)
                 return definitions[i].offset;
         }
 
-        for(int i=0; i < defines.size(); i++)
+        for(int i=0; i < (int)defines.size(); i++)
         {
             if(defines[i].name == name)
                 return defines[i].value;
