@@ -14,6 +14,7 @@
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
 
+constexpr
 bool should_prune(char c)
 {
     return c == ' ' || c == '\n' || c == ',';
@@ -465,7 +466,6 @@ struct return_info
     constexpr return_info(){}
 };
 
-inline
 constexpr
 std::pair<std::optional<return_info>, std::string_view> assemble(std::string_view text)
 {
@@ -545,5 +545,7 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
     return {rinfo, ""};
 }
+
+std::pair<std::optional<return_info>, std::string_view> assemble_fwd(std::string_view text);
 
 #endif // BASE_ASM_HPP_INCLUDED
