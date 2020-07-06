@@ -206,13 +206,13 @@ constexpr int get_hex_digit(char in)
 }
 
 inline
-constexpr int positive_stoi_cxper(std::string_view in, int radix)
+constexpr uint32_t positive_stoi_cxper(std::string_view in, int radix)
 {
     if(in.size() == 0)
         return 0;
 
-    int value = 0;
-    int base = 1;
+    uint32_t value = 0;
+    uint32_t base = 1;
 
     for(int i=(int)in.size() - 1; i >= 0; i--)
     {
@@ -243,7 +243,7 @@ constexpr int positive_stoi_cxper(std::string_view in, int radix)
 }
 
 inline
-constexpr int get_constant(std::string_view in)
+constexpr uint16_t get_constant(std::string_view in)
 {
     if(in.size() == 0)
         return 0;
@@ -256,7 +256,7 @@ constexpr int get_constant(std::string_view in)
         in.remove_prefix(1);
     }
 
-    int n = 0;
+    uint16_t n = 0;
 
     if(in.starts_with("0x"))
     {
@@ -268,7 +268,7 @@ constexpr int get_constant(std::string_view in)
     }
 
     if(is_neg)
-        return -n;
+        return -(int16_t)n;
     else
         return n;
 }
