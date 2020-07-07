@@ -468,6 +468,7 @@ struct return_info
 {
     stack_vector<uint16_t, MEM_SIZE> mem;
     stack_vector<uint16_t, MEM_SIZE> translation_map;
+    stack_vector<uint16_t, MEM_SIZE> pc_to_source_line;
 
     constexpr return_info(){}
 };
@@ -477,6 +478,8 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 {
     return_info rinfo;
     symbol_table sym;
+
+    std::string_view input_copy = text;
 
     size_t start_size = text.size();
     size_t last_mem_size = 0;
@@ -513,6 +516,26 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
         {
             rinfo.translation_map[i] = rinfo.translation_map[prev_val];
         }
+    }
+
+    stack_vector<uint16_t, MEM_SIZE> source_to_line;
+
+    int line = 0;
+    for(int idx = 0; idx < (int)input_copy.size(); idx++)
+    {
+        source_to_line.push_back((uint16_t)line);
+
+        if(input_copy[idx] == '\n')
+        {
+            line++;
+        }
+    }
+
+    for(int idx = 0; idx < (int)rinfo.translation_map.size(); idx++)
+    {
+        uint16_t source_character = rinfo.translation_map[idx];
+
+        rinfo.pc_to_source_line[idx] = source_to_line[source_character];
     }
 
     /*if(sym.definitions.size() > 0 && sym.usages.size() > 0)
