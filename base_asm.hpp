@@ -290,7 +290,10 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
 
     if(is_label_definition(consumed_name))
     {
-        consumed_name.remove_prefix(1);
+        if(consumed_name.starts_with(':'))
+            consumed_name.remove_prefix(1);
+        if(consumed_name.ends_with(':'))
+            consumed_name.remove_suffix(1);
 
         auto trimmed = trim_start(consumed_name, [](char c) {return c == ' ' || c == '\n' || c == ','; });
 

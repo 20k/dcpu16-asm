@@ -152,7 +152,7 @@ constexpr bool iequal(std::string_view in1, std::string_view in2)
 inline
 constexpr bool is_label_definition(std::string_view in)
 {
-    return in.starts_with(':');
+    return in.starts_with(':') || in.ends_with(':');
 }
 
 inline
