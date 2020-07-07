@@ -540,7 +540,7 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
     int last_pc_line = (int)rinfo.pc_to_source_line.size() - 1;
 
-    if(last_pc_line > 0)
+    if(last_pc_line >= 0)
     {
         for(int i=rinfo.pc_to_source_line.size(); i < rinfo.pc_to_source_line.max_size; i++)
         {
