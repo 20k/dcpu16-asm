@@ -48,38 +48,65 @@ constexpr std::string_view consume_next(std::string_view& in)
     if(in.size() == 0)
         return in;
 
-    auto trimmed = trim_start(in, [](char c) {return c == ' ' || c == '\n' || c == ','; });
+    int start_index = 0;
+    std::string_view data = in;
+    bool in_comment = false;
 
-    if(trimmed.size() == 0)
+    for(; start_index < (int)data.size(); start_index++)
     {
-        in = trimmed;
-        return trimmed;
-    }
+        char cchar = data[start_index];
 
-    if(trimmed[0] == ';')
-    {
-        size_t next = std::min(trimmed.find_first_of("\n"), trimmed.size());
-
-        if(next == trimmed.size())
+        if(!in_comment)
         {
-            in = trimmed;
-            return trimmed;
+            if(cchar == ' ' || cchar == '\n' || cchar == ',')
+                continue;
+        }
+        else
+        {
+            if(cchar == '\n')
+            {
+                in_comment = false;
+            }
+
+            continue;
         }
 
-        trimmed.remove_prefix(next + 1);
+        if(cchar == ';')
+        {
+            in_comment = true;
+            continue;
+        }
+
+        break;
     }
 
-    size_t next = std::min(trimmed.find_first_of(",\n "), trimmed.size());
+    if(start_index == (int)data.size())
+    {
+        data.remove_prefix(start_index);
+        in = data;
+        return data;
+    }
 
-    auto first = trimmed;
-    auto second = trimmed;
+    data.remove_prefix(start_index);
 
-    first.remove_suffix(trimmed.size() - next);
-    second.remove_prefix(next);
+    int word_end = 0;
 
-    in = second;
+    for(; word_end < (int)data.size(); word_end++)
+    {
+        char cchar = data[word_end];
 
-    return trim_end(first, [](char c) {return c == ' ' || c == '\n' || c == ','; });
+        if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == ';')
+            break;
+    }
+
+    auto suffix = data;
+
+    data.remove_suffix(data.size() - word_end);
+    suffix.remove_prefix(word_end);
+
+    in = suffix;
+
+    return data;
 }
 
 inline
