@@ -535,7 +535,17 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
     {
         uint16_t source_character = rinfo.translation_map[idx];
 
-        rinfo.pc_to_source_line[idx] = source_to_line[source_character];
+        rinfo.pc_to_source_line.push_back(source_to_line[source_character]);
+    }
+
+    int last_pc_line = (int)rinfo.pc_to_source_line.size() - 1;
+
+    if(last_pc_line > 0)
+    {
+        for(int i=rinfo.pc_to_source_line.size(); i < rinfo.pc_to_source_line.max_size; i++)
+        {
+            rinfo.pc_to_source_line[i] = rinfo.pc_to_source_line[last_pc_line] + 1;
+        }
     }
 
     /*if(sym.definitions.size() > 0 && sym.usages.size() > 0)
