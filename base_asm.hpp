@@ -226,7 +226,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out)
+std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start)
 {
     opcode opcodes[] =
     {
@@ -277,7 +277,13 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         // could have an instruction that swaps modes into extended alt proposal mode
     };
 
+    size_t old_size = in.size();
+
     auto consumed_name = consume_next(in);
+
+    size_t num_removed = old_size - (in.size() + consumed_name.size());
+
+    token_text_offset_start = num_removed;
 
     if(consumed_name.size() == 0)
         return std::nullopt;
@@ -479,15 +485,14 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
     {
         size_t offset = start_size - text.size();
 
-        //while(offset < text.size() && should_prune(text[offset]))
-        //    offset++;
+        size_t token_offset = 0;
 
-        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem);
+        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset);
 
         for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
         {
             //rinfo.translation_map[i] = offset;
-            rinfo.translation_map.push_back(offset);
+            rinfo.translation_map.push_back(offset + token_offset);
         }
 
         last_mem_size = rinfo.mem.size();
