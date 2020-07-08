@@ -500,7 +500,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         }
     }
 
-    err.msg = "Error not command";
+    err.msg = "Not command or label";
     return err;
 }
 
