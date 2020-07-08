@@ -224,10 +224,19 @@ struct opcode
     uint16_t code;
 };
 
+struct error_info
+{
+    std::string_view name_in_source;
+    std::string_view msg;
+    int character = 0;
+};
+
 inline
 constexpr
-std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start)
+std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start)
 {
+    error_info err;
+
     opcode opcodes[] =
     {
         {"set", 0, 1},
@@ -285,6 +294,9 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
 
     token_text_offset_start = num_removed;
 
+    err.name_in_source = consumed_name;
+    err.character = token_text_offset_start + token_start;
+
     if(consumed_name.size() == 0)
         return std::nullopt;
 
@@ -311,7 +323,10 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         auto label_value = consume_next(in);
 
         if(!is_constant(label_value))
-            return ".def value must be a constant";
+        {
+            err.msg = ".def value must be a constant";
+            return err;
+        }
 
         uint16_t val = get_constant(label_value);
 
@@ -340,7 +355,8 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         }
         else
         {
-            return "Bad .dat, must be constant or label or definition";
+            err.msg = "Bad .dat, must be constant or label or definition";
+            return err;
         }
 
         out.push_back(fval);
@@ -366,10 +382,16 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
                 auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, sym);
 
                 if(!compiled_b.has_value())
-                    return "first argument failed to decode";
+                {
+                    err.msg = "first argument failed to decode";
+                    return err;
+                }
 
                 if(!compiled_a.has_value())
-                    return "second argument failed to decode";
+                {
+                    err.msg = "second argument failed to decode";
+                    return err;
+                }
 
                 auto instr = construct_type_a(code, compiled_a.value(), compiled_b.value());
 
@@ -380,7 +402,10 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
                     uint32_t promote_a = extra_a.value();
 
                     if(promote_a >= 65536)
-                        return "second argument >= UINT_MAX or < INT_MIN";
+                    {
+                        err.msg = "second argument >= UINT_MAX or < INT_MIN";
+                        return err;
+                    }
 
                     if(is_label_a.has_value())
                     {
@@ -399,7 +424,10 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
                     uint32_t promote_b = extra_b.value();
 
                     if(promote_b >= 65536)
-                        return "first argument >= UINT_MAX or < INT_MIN";
+                    {
+                        err.msg = "first argument >= UINT_MAX or < INT_MIN";
+                        return err;
+                    }
 
                     if(is_label_b.has_value())
                     {
@@ -425,7 +453,10 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
                 auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, sym);
 
                 if(!compiled_a.has_value())
-                    return "first argument failed to decode";
+                {
+                    err.msg = "first argument failed to decode";
+                    return err;
+                }
 
                 auto instr = construct_type_b(code, compiled_a.value());
 
@@ -436,7 +467,10 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
                     uint32_t promote_a = extra_a.value();
 
                     if(promote_a >= 65536)
-                        return "first argument >= UINT_MAX or < INT_MIN";
+                    {
+                        err.msg = "first argument >= UINT_MAX or < INT_MIN";
+                        return err;
+                    }
 
                     if(is_label_a.has_value())
                     {
@@ -464,7 +498,8 @@ std::optional<std::string_view> add_opcode_with_prefix(symbol_table& sym, std::s
         }
     }
 
-    return "Error not command";
+    err.msg = "Error not command";
+    return err;
 }
 
 struct return_info
@@ -477,7 +512,7 @@ struct return_info
 };
 
 constexpr
-std::pair<std::optional<return_info>, std::string_view> assemble(std::string_view text)
+std::pair<std::optional<return_info>, error_info> assemble(std::string_view text)
 {
     return_info rinfo;
     symbol_table sym;
@@ -493,7 +528,7 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
         size_t token_offset = 0;
 
-        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset);
+        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset);
 
         for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
         {
@@ -581,13 +616,18 @@ std::pair<std::optional<return_info>, std::string_view> assemble(std::string_vie
 
         if(!found)
         {
-            return {std::nullopt, "Label used with no definition"};
+            error_info err;
+            err.msg = "Label used with no definition";
+            err.character = 0;
+            err.name_in_source = j.name;
+
+            return {std::nullopt, err};
         }
     }
 
-    return {rinfo, ""};
+    return {rinfo, error_info()};
 }
 
-std::pair<std::optional<return_info>, std::string_view> assemble_fwd(std::string_view text);
+std::pair<std::optional<return_info>, error_info> assemble_fwd(std::string_view text);
 
 #endif // BASE_ASM_HPP_INCLUDED

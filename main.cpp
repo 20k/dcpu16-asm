@@ -45,6 +45,8 @@ void print_sv(std::string_view in)
     {
         putchar(i);
     }
+
+    printf("\n");
 }
 
 void tests()
@@ -158,7 +160,9 @@ int main(int argc, char* argv[])
     if(!data_opt.has_value())
     {
         printf("Could not assemble. Err: ");
-        print_sv(err);
+        print_sv(err.msg);
+        print_sv(err.name_in_source);
+        printf("Character: %i", err.character);
 
         return 1;
     }
