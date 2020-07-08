@@ -229,11 +229,12 @@ struct error_info
     std::string_view name_in_source;
     std::string_view msg;
     int character = 0;
+    int line = 0;
 };
 
 inline
 constexpr
-std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start)
+std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line)
 {
     error_info err;
 
@@ -296,6 +297,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
     err.name_in_source = consumed_name;
     err.character = token_text_offset_start + token_start;
+    err.line = source_to_line[err.character];
 
     if(consumed_name.size() == 0)
         return std::nullopt;
@@ -517,7 +519,18 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
     return_info rinfo;
     symbol_table sym;
 
-    std::string_view input_copy = text;
+    stack_vector<uint16_t, MEM_SIZE> source_to_line;
+
+    int line = 0;
+    for(int idx = 0; idx < (int)text.size(); idx++)
+    {
+        source_to_line.push_back((uint16_t)line);
+
+        if(text[idx] == '\n')
+        {
+            line++;
+        }
+    }
 
     size_t start_size = text.size();
     size_t last_mem_size = 0;
@@ -528,7 +541,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
         size_t token_offset = 0;
 
-        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset);
+        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line);
 
         for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
         {
@@ -553,19 +566,6 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         for(int i=rinfo.translation_map.size(); i < rinfo.translation_map.max_size; i++)
         {
             rinfo.translation_map[i] = rinfo.translation_map[prev_val];
-        }
-    }
-
-    stack_vector<uint16_t, MEM_SIZE> source_to_line;
-
-    int line = 0;
-    for(int idx = 0; idx < (int)input_copy.size(); idx++)
-    {
-        source_to_line.push_back((uint16_t)line);
-
-        if(input_copy[idx] == '\n')
-        {
-            line++;
         }
     }
 
@@ -619,6 +619,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
             error_info err;
             err.msg = "Label used with no definition";
             err.character = 0;
+            err.line = 0;
             err.name_in_source = j.name;
 
             return {std::nullopt, err};

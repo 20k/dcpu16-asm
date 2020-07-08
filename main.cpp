@@ -161,8 +161,10 @@ int main(int argc, char* argv[])
     {
         printf("Could not assemble. Err: ");
         print_sv(err.msg);
+        printf("Name: ");
         print_sv(err.name_in_source);
         printf("Character: %i", err.character);
+        printf("Line %i\n", err.line);
 
         return 1;
     }
