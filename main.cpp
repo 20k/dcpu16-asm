@@ -105,8 +105,8 @@ constexpr void constexpr_tests()
     static_assert(!is_constant("-1234cat"));
 
     static_assert(get_constant("0x1234") == 0x1234);
-    static_assert(get_constant("-0x1234") == -0x1234);
-    static_assert(get_constant("-1234") == -1234);
+    static_assert(get_constant("-0x1234") == (uint16_t)-0x1234);
+    static_assert(get_constant("-1234") == (uint16_t)-1234);
     static_assert(get_constant("1234") == 1234);
 
     //std::optional<uint32_t> out;
