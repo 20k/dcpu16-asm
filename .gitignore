@@ -1,3 +1,4 @@
 /*.depend
 /bin/Release/*.exe
 /obj/Release/*.o
+/DCPU16_ASM.layout
