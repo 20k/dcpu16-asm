@@ -277,23 +277,6 @@ struct expression_result
     std::optional<std::string_view> which_register = std::nullopt;
     std::optional<uint16_t> word = std::nullopt;
 
-    /*constexpr
-    bool combine_into(expression_result& res)
-    {
-        if(!op.has_value())
-            return false;
-
-        std::string_view val = op.value();
-
-        if(which_register.has_value() && (val != '+' && val != '-'))
-            return false;
-
-        if(!which_register.has_value())
-        {
-            if(!res.which_register.has)
-        }
-    }*/
-
     constexpr
     bool fully_resolved()
     {
