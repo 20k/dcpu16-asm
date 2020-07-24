@@ -43,7 +43,7 @@ constexpr std::string_view trim_end(std::string_view view, const T& matches)
 }
 
 inline
-constexpr std::string_view consume_next(std::string_view& in)
+constexpr std::string_view consume_next(std::string_view& in, bool is_space_delimited)
 {
     if(in.size() == 0)
         return in;
@@ -134,8 +134,16 @@ constexpr std::string_view consume_next(std::string_view& in)
             continue;
         }
 
-        if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == ';' || cchar == '\t')
-            break;
+        if(is_space_delimited)
+        {
+            if(cchar == '\n' || cchar == ',' || cchar == ';' || cchar == ' ' || cchar == '\t')
+                break;
+        }
+        else
+        {
+            if(cchar == '\n' || cchar == ',' || cchar == ';')
+                break;
+        }
     }
 
     ///because of escapes
@@ -147,14 +155,19 @@ constexpr std::string_view consume_next(std::string_view& in)
     data.remove_suffix(data.size() - word_end);
     suffix.remove_prefix(word_end);
 
+    while(data.size() > 0 && (data.back() == ' ' || data.back() == '\t'))
+    {
+        data.remove_suffix(1);
+    }
+
     in = suffix;
 
     return data;
 }
 
-constexpr std::string_view peek_next(std::string_view in)
+constexpr std::string_view peek_next(std::string_view in, bool is_space_delimited)
 {
-    return consume_next(in);
+    return consume_next(in, is_space_delimited);
 }
 
 inline

@@ -763,7 +763,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
     size_t old_size = in.size();
 
-    auto consumed_name = consume_next(in);
+    auto consumed_name = consume_next(in, true);
 
     size_t num_removed = old_size - (in.size() + consumed_name.size());
 
@@ -795,8 +795,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
     if(iequal(".def", consumed_name) || iequal("def", consumed_name))
     {
-        auto label_name = consume_next(in);
-        auto label_value = consume_next(in);
+        auto label_name = consume_next(in, true);
+        auto label_value = consume_next(in, true);
 
         if(!is_constant(label_value))
         {
@@ -821,7 +821,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
         while(looping)
         {
-            auto value = consume_next(in);
+            auto value = consume_next(in, true);
 
             if(is_label_reference(value) && sym.get_symbol_definition(value).has_value())
             {
@@ -915,9 +915,9 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                 return err;
             }
 
-            if(peek_next(in) == ",")
+            if(peek_next(in, true) == ",")
             {
-                consume_next(in);
+                consume_next(in, true);
 
                 looping = true;
             }
@@ -936,15 +936,15 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         {
             if(cls == 0)
             {
-                auto val_b = consume_next(in);
+                auto val_b = consume_next(in, false);
 
-                if(consume_next(in) != ",")
+                if(consume_next(in, true) != ",")
                 {
                     err.msg = "Expected ,";
                     return err;
                 }
 
-                auto val_a = consume_next(in);
+                auto val_a = consume_next(in, false);
 
                 std::optional<int32_t> extra_b;
                 std::optional<std::string_view> is_label_b;
@@ -1019,7 +1019,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
             if(cls == 1)
             {
-                auto val_a = consume_next(in);
+                auto val_a = consume_next(in, false);
 
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
