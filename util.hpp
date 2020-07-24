@@ -58,7 +58,7 @@ constexpr std::string_view consume_next(std::string_view& in)
 
         if(!in_comment)
         {
-            if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == '\t')
+            if(cchar == ' ' || cchar == '\n' || cchar == '\t')
                 continue;
         }
         else
@@ -88,6 +88,14 @@ constexpr std::string_view consume_next(std::string_view& in)
     }
 
     data.remove_prefix(start_index);
+
+    if(data.size() > 0 && data[0] == ',')
+    {
+        data.remove_prefix(1);
+        in = data;
+
+        return ",";
+    }
 
     bool in_string = false;
     char string_char = '\0';
@@ -142,6 +150,11 @@ constexpr std::string_view consume_next(std::string_view& in)
     in = suffix;
 
     return data;
+}
+
+constexpr std::string_view peek_next(std::string_view in)
+{
+    return consume_next(in);
 }
 
 inline

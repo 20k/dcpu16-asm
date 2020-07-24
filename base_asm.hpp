@@ -343,105 +343,117 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
     if(iequal(".dat", consumed_name) || iequal("dat", consumed_name))
     {
-        auto value = consume_next(in);
+        bool looping = true;
 
-        uint16_t fval = 0;
+        while(looping)
+        {
+            auto value = consume_next(in);
 
-        if(is_label_reference(value) && sym.get_symbol_definition(value).has_value())
-        {
-            fval = sym.get_symbol_definition(value).value();
-        }
-        else if(is_constant(value))
-        {
-            fval = get_constant(value);
-        }
-        else if(is_string(value))
-        {
-            value.remove_prefix(1);
-            value.remove_suffix(1);
-
-            ///need to parse string constants
-            for(int idx = 0; idx < (int)value.size(); idx++)
+            if(is_label_reference(value) && sym.get_symbol_definition(value).has_value())
             {
-                char c = value[idx];
+                out.push_back(sym.get_symbol_definition(value).value());
+            }
+            else if(is_constant(value))
+            {
+                out.push_back(get_constant(value));
+            }
+            else if(is_string(value))
+            {
+                value.remove_prefix(1);
+                value.remove_suffix(1);
 
-                if(c == '\\')
+                ///need to parse string constants
+                for(int idx = 0; idx < (int)value.size(); idx++)
                 {
-                    if(idx == (int)value.size() - 1)
+                    char c = value[idx];
+
+                    if(c == '\\')
                     {
-                        err.msg = "Invalid unterminated escape sequence \\ at end of token";
-                        return err;
+                        if(idx == (int)value.size() - 1)
+                        {
+                            err.msg = "Invalid unterminated escape sequence \\ at end of token";
+                            return err;
+                        }
+
+                        char next = value[idx + 1];
+
+                        bool valid_escape_sequence = true;
+
+                        if(next == 't')
+                            c = '\t';
+
+                        else if(next == 'n')
+                            c = '\n';
+
+                        else if(next == '\\')
+                            c = '\\';
+
+                        else if(next == '\'')
+                            c = '\'';
+
+                        else if(next == '\"')
+                            c = '\"';
+
+                        else if(next == 'r')
+                            c = '\r';
+
+                        else if(next == 'b')
+                            c = '\b';
+
+                        else if(next == 'f')
+                            c = '\f';
+
+                        else if(next == 'v')
+                            c = '\v';
+
+                        else if(next == '0')
+                            c = '\0';
+
+                        else if(next == 'a')
+                            c = '\a';
+
+                        else if(next == 'e')
+                            c = '\e';
+
+                        else if(next == '?')
+                            c = '?';
+                        else
+                            valid_escape_sequence = false;
+
+                        if(!valid_escape_sequence)
+                        {
+                            err.msg = "Invalid escape sequence";
+                            err.name_in_source = std::string_view(value.begin() + idx, value.begin() + idx + 2);
+                            return err;
+                        }
+
+                        idx++;
                     }
 
-                    char next = value[idx + 1];
+                    uint16_t wide = (uint8_t)c;
 
-                    bool valid_escape_sequence = true;
-
-                    if(next == 't')
-                        c = '\t';
-
-                    else if(next == 'n')
-                        c = '\n';
-
-                    else if(next == '\\')
-                        c = '\\';
-
-                    else if(next == '\'')
-                        c = '\'';
-
-                    else if(next == '\"')
-                        c = '\"';
-
-                    else if(next == 'r')
-                        c = '\r';
-
-                    else if(next == 'b')
-                        c = '\b';
-
-                    else if(next == 'f')
-                        c = '\f';
-
-                    else if(next == 'v')
-                        c = '\v';
-
-                    else if(next == '0')
-                        c = '\0';
-
-                    else if(next == 'a')
-                        c = '\a';
-
-                    else if(next == 'e')
-                        c = '\e';
-
-                    else if(next == '?')
-                        c = '?';
-                    else
-                        valid_escape_sequence = false;
-
-                    if(!valid_escape_sequence)
-                    {
-                        err.msg = "Invalid escape sequence";
-                        err.name_in_source = std::string_view(value.begin() + idx, value.begin() + idx + 2);
-                        return err;
-                    }
-
-                    idx++;
+                    out.push_back(wide);
                 }
-
-                uint16_t wide = (uint8_t)c;
-
-                out.push_back(wide);
+            }
+            else
+            {
+                err.msg = "Bad .dat, must be constant or label or definition or string";
+                return err;
             }
 
-            return std::nullopt;
-        }
-        else
-        {
-            err.msg = "Bad .dat, must be constant or label or definition or string";
-            return err;
-        }
+            std::cout << "PEEK" << peek_next(in) << "F" << std::endl;
 
-        out.push_back(fval);
+            if(peek_next(in) == ",")
+            {
+                consume_next(in);
+
+                looping = true;
+            }
+            else
+            {
+                looping = false;
+            }
+        }
 
         return std::nullopt;
     }
@@ -453,6 +465,13 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
             if(cls == 0)
             {
                 auto val_b = consume_next(in);
+
+                if(consume_next(in) != ",")
+                {
+                    err.msg = "Expected ,";
+                    return err;
+                }
+
                 auto val_a = consume_next(in);
 
                 std::optional<int32_t> extra_b;
