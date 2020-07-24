@@ -316,9 +316,7 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
                     break;
                 }
 
-                auto val = operator_stack.back();
-
-                output_queue.push_back(val);
+                output_queue.push_back(operator_stack.back());
 
                 operator_stack.pop_back();
             }
