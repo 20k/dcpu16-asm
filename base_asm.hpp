@@ -9,6 +9,7 @@
 #include "shared.hpp"
 #include "util.hpp"
 #include "base_asm_fwd.hpp"
+#include <iostream>
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -109,7 +110,6 @@ struct expression_result
     uint16_t which_register = 0;
     uint16_t word = 0;
 };
-
 
 constexpr std::string_view consume_expression_token(std::string_view& in)
 {
@@ -213,10 +213,138 @@ constexpr std::string_view consume_expression_token(std::string_view& in)
     }
 }
 
-/*constexpr std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
+///shunting yard
+constexpr std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
 {
+    std::array supported_operators
+    {
+        "+", "-", "/", "|", "^", "&", "%", "*", "**",
+    };
+    std::array precedence
+    {
+        4, 4, 3, 10, 9, 8, 3, 3, 2
+    };
+    std::array left_associative
+    {
+        1, 1, 1, 1, 1, 1, 1, 1, 0
+    };
 
-}*/
+    static_assert(precedence.size() == supported_operators.size());
+
+    stack_vector<std::string_view, 512> operator_stack;
+    expression_result res;
+
+    auto get_operator_idx = [&](std::string_view in)
+    {
+        int operator_idx = -1;
+
+        for(int i=0; i < (int)supported_operators.size(); i++)
+        {
+            if(supported_operators[i] == in)
+            {
+                operator_idx = i;
+                break;
+            }
+        }
+
+        return operator_idx;
+    };
+
+    auto get_precedence = [&](std::string_view in)
+    {
+        return precedence[get_operator_idx(in)];
+    };
+
+    auto is_left_associative = [&](std::string_view in)
+    {
+        return left_associative[get_operator_idx(in)];
+    };
+
+    stack_vector<std::string_view, 512> output_queue;
+
+    while(expr.size() > 0)
+    {
+        std::string_view consumed = consume_expression_token(expr);
+
+        if(consumed.size() == 0)
+            break;
+
+        bool all_whitespace = true;
+
+        for(auto i : consumed)
+        {
+            if(!(i == ' ' || i == '\t'))
+                all_whitespace = false;
+        }
+
+        if(all_whitespace)
+            continue;
+
+        if(is_constant(consumed))
+        {
+            operator_stack.push_back(consumed);
+        }
+        else if(get_operator_idx(consumed))
+        {
+            while(operator_stack.size() > 0 &&
+                  operator_stack.back() != "(" &&
+                  (
+                    (get_precedence(operator_stack.back()) > get_precedence(consumed)) ||
+                        ((get_precedence(operator_stack.back()) == get_precedence(consumed)) && is_left_associative(consumed))))
+            {
+                output_queue.push_back(operator_stack.back());
+                operator_stack.pop_back();
+            }
+
+            operator_stack.push_back(consumed);
+        }
+        else if(consumed == "(")
+        {
+            operator_stack.push_back("(");
+        }
+        else if(consumed == ")")
+        {
+            bool found = false;
+
+            while(operator_stack.size() > 0)
+            {
+                if(operator_stack.back() == "(")
+                {
+                    found = true;
+                    operator_stack.pop_back();
+                    break;
+                }
+
+                auto val = operator_stack.back();
+
+                output_queue.push_back(val);
+
+                operator_stack.pop_back();
+            }
+
+            // error! mismatched parentheses
+            if(!found)
+                return std::nullopt;
+        }
+    }
+
+    while(operator_stack.size() > 0)
+    {
+        // mismatched parentheses
+        if(operator_stack.back() == ")" || operator_stack.back() == "(")
+            return std::nullopt;
+
+        output_queue.push_back(operator_stack.back());
+        operator_stack.pop_back();
+    }
+
+    for(auto i : output_queue)
+    {
+        std::cout << i << std::endl;
+    }
+
+    return res;
+}
 
 // so
 // create a table of MAX_WHATEVER long which contains byte -> label mapping

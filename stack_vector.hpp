@@ -23,6 +23,11 @@ struct stack_vector
         idx++;
     }
 
+    void pop_back()
+    {
+        idx--;
+    }
+
     constexpr
     T& emplace_back()
     {
@@ -63,6 +68,24 @@ struct stack_vector
     auto end()
     {
         return svec.begin() + idx;
+    }
+
+    constexpr
+    auto& back()
+    {
+        if(idx == 0)
+            return svec[0];
+
+        return svec[idx - 1];
+    }
+
+    constexpr
+    auto back() const
+    {
+        if(idx == 0)
+            return svec[0];
+
+        return svec[idx - 1];
     }
 };
 
