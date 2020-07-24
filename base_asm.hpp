@@ -104,6 +104,120 @@ struct symbol_table
     }
 };
 
+struct expression_result
+{
+    uint16_t which_register = 0;
+    uint16_t word = 0;
+};
+
+
+constexpr std::string_view consume_expression_token(std::string_view& in)
+{
+    while(in.size() > 0 && (in.front() == ' ' || in.front() == '\t')){in.remove_prefix(1);}
+
+    if(in.size() == 0)
+        return "";
+
+    if(in.starts_with("0x"))
+    {
+        int fin = 2;
+
+        for(fin = 2; fin < (int)in.size(); fin++)
+        {
+            if(!is_hex_digit(in[fin]))
+                break;
+        }
+
+        std::string_view data(in.begin(), in.begin() + fin);
+
+        in.remove_prefix(fin);
+
+        return data;
+    }
+    else if(in.starts_with("0b"))
+    {
+        int fin = 2;
+
+        for(fin = 2; fin < (int)in.size(); fin++)
+        {
+            if(!is_binary_digit(in[fin]))
+                break;
+        }
+
+        std::string_view data(in.begin(), in.begin() + fin);
+
+        in.remove_prefix(fin);
+
+        return data;
+    }
+    else if(is_digit(in[0]))
+    {
+        int fin = 0;
+
+        for(fin = 0; fin < (int)in.size(); fin++)
+        {
+            if(!is_digit(in[fin]))
+                break;
+        }
+
+        std::string_view data(in.begin(), in.begin() + fin);
+
+        in.remove_prefix(fin);
+
+        return data;
+    }
+    else
+    {
+        if(in[0] == ')' || in[0] == '(' || in[0] == '+' || in[0] == '-' || in[0] == '/' ||
+           in[0] == '|' || in[0] == '^' || in[0] == '&' ||
+           in[0] == '%')
+        {
+            std::string_view ret = in.substr(0, 1);
+
+            in.remove_prefix(1);
+
+            return ret;
+        }
+
+        if(in[0] == '*')
+        {
+            if(in.size() >= 2)
+            {
+                if(in[1] == '*')
+                {
+                    in.remove_prefix(2);
+                    return "**";
+                }
+            }
+
+            return "*";
+        }
+
+        if(isalnum_c(in[0]))
+        {
+            int fin = 0;
+
+            for(fin=0; fin < (int)in.size(); fin++)
+            {
+                if(!isalnum_c(in[fin]))
+                    break;
+            }
+
+            std::string_view ret = in.substr(0, fin);
+            in.remove_prefix(fin);
+
+            return ret;
+        }
+
+        return "No match";
+    }
+}
+
+/*constexpr std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
+{
+
+}*/
+
 // so
 // create a table of MAX_WHATEVER long which contains byte -> label mapping
 // then figure out a way to sub label pc value back in to instructions
