@@ -281,7 +281,7 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
         if(all_whitespace)
             continue;
 
-        if(is_constant(consumed))
+        if(is_constant(consumed) || is_label_reference(consumed))
         {
             output_queue.push_back(consumed);
         }
