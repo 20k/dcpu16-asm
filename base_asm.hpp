@@ -441,8 +441,6 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                 return err;
             }
 
-            std::cout << "PEEK" << peek_next(in) << "F" << std::endl;
-
             if(peek_next(in) == ",")
             {
                 consume_next(in);
