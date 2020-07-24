@@ -58,7 +58,7 @@ constexpr std::string_view consume_next(std::string_view& in)
 
         if(!in_comment)
         {
-            if(cchar == ' ' || cchar == '\n' || cchar == ',')
+            if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == '\t')
                 continue;
         }
         else
@@ -95,7 +95,7 @@ constexpr std::string_view consume_next(std::string_view& in)
     {
         char cchar = data[word_end];
 
-        if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == ';')
+        if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == ';' || cchar == '\t')
             break;
     }
 
