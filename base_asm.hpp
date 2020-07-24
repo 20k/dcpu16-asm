@@ -190,6 +190,8 @@ constexpr std::string_view consume_expression_token(std::string_view& in)
                 }
             }
 
+            in.remove_prefix(1);
+
             return "*";
         }
 
@@ -265,6 +267,8 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
     while(expr.size() > 0)
     {
         std::string_view consumed = consume_expression_token(expr);
+
+        std::cout << "CONSUMED " << consumed << std::endl;
 
         if(consumed.size() == 0)
             break;
