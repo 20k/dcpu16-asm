@@ -355,9 +355,89 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         {
             fval = get_constant(value);
         }
+        else if(is_string(value))
+        {
+            value.remove_prefix(1);
+            value.remove_suffix(1);
+
+            ///need to parse string constants
+            for(int idx = 0; idx < (int)value.size(); idx++)
+            {
+                char c = value[idx];
+
+                if(c == '\\')
+                {
+                    if(idx == (int)value.size() - 1)
+                    {
+                        err.msg = "Invalid unterminated escape sequence \\ at end of token";
+                        return err;
+                    }
+
+                    char next = value[idx + 1];
+
+                    bool valid_escape_sequence = true;
+
+                    if(next == 't')
+                        c = '\t';
+
+                    else if(next == 'n')
+                        c = '\n';
+
+                    else if(next == '\\')
+                        c = '\\';
+
+                    else if(next == '\'')
+                        c = '\'';
+
+                    else if(next == '\"')
+                        c = '\"';
+
+                    else if(next == 'r')
+                        c = '\r';
+
+                    else if(next == 'b')
+                        c = '\b';
+
+                    else if(next == 'f')
+                        c = '\f';
+
+                    else if(next == 'v')
+                        c = '\v';
+
+                    else if(next == '0')
+                        c = '\0';
+
+                    else if(next == 'a')
+                        c = '\a';
+
+                    else if(next == 'e')
+                        c = '\e';
+
+                    else if(next == '?')
+                        c = '?';
+                    else
+                        valid_escape_sequence = false;
+
+                    if(!valid_escape_sequence)
+                    {
+                        err.msg = "Invalid escape sequence";
+                        err.name_in_source = std::string_view(value.begin() + idx, value.begin() + idx + 2);
+                        return err;
+                    }
+
+                    idx++;
+                }
+
+                uint16_t wide = (uint8_t)c;
+
+                out.push_back(wide);
+            }
+
+            return std::nullopt;
+        }
         else
         {
-            err.msg = "Bad .dat, must be constant or label or definition";
+            err.msg = "Bad .dat, must be constant or label or definition or string";
             return err;
         }
 

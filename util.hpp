@@ -89,15 +89,50 @@ constexpr std::string_view consume_next(std::string_view& in)
 
     data.remove_prefix(start_index);
 
+    bool in_string = false;
+    char string_char = '\0';
+
     int word_end = 0;
 
+    ///has slightly weird behaviour
+    ///where
+    ///hello\ hi
+    ///would be one token
     for(; word_end < (int)data.size(); word_end++)
     {
-        char cchar = data[word_end];
+        const char cchar = data[word_end];
+
+        if(cchar == '\\' && word_end != (int)data.size() - 1)
+        {
+            word_end++;
+            continue;
+        }
+
+        if(!in_string && (cchar == '\'' || cchar == '\"'))
+        {
+            in_string = true;
+            string_char = cchar;
+            continue;
+        }
+
+        if(in_string)
+        {
+            if(cchar == string_char)
+            {
+                in_string = false;
+                string_char = '\0';
+            }
+
+            continue;
+        }
 
         if(cchar == ' ' || cchar == '\n' || cchar == ',' || cchar == ';' || cchar == '\t')
             break;
     }
+
+    ///because of escapes
+    if(word_end > (int)data.size())
+        word_end = data.size();
 
     auto suffix = data;
 
@@ -219,6 +254,16 @@ constexpr bool is_constant(std::string_view in)
     }
 
     return true;
+}
+
+constexpr bool is_string(std::string_view in)
+{
+    if(in.size() < 2)
+        return false;
+
+    char first = in[0];
+
+    return (first == '\'' || first == '\"') && in.back() == first;
 }
 
 inline
