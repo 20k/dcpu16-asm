@@ -346,6 +346,15 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
                     return me;
                 }
 
+                if(left_exp.op.value() == "+" && me.op.value() == "-")
+                {
+                    me.word = exec_op(left_exp.word.value(), right_exp.word.value(), "-");
+                    me.which_register = left_exp.which_register;
+                    me.op = "+";
+
+                    return me;
+                }
+
                 return std::nullopt;
             }
             else if(me.op.value() == "+")
@@ -558,7 +567,12 @@ std::optional<expression_result> parse_expression(symbol_table& sym, std::string
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    return resolve_expression(sym, output_queue, should_delay);
+    auto found = resolve_expression(sym, output_queue, should_delay);
+
+    if(output_queue.size() > 0)
+        return std::nullopt;
+
+    return found;
 }
 
 // so
