@@ -10,6 +10,7 @@
 #include "util.hpp"
 #include "base_asm_fwd.hpp"
 #include <iostream>
+#include <cmath>
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -103,12 +104,6 @@ struct symbol_table
 
         return std::nullopt;
     }
-};
-
-struct expression_result
-{
-    uint16_t which_register = 0;
-    uint16_t word = 0;
 };
 
 constexpr std::string_view consume_expression_token(std::string_view& in)
@@ -215,14 +210,236 @@ constexpr std::string_view consume_expression_token(std::string_view& in)
     }
 }
 
-///shunting yard
-constexpr std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
+constexpr int get_operator_idx(std::string_view in)
 {
     std::array supported_operators
     {
         "+", "-", "/", "|", "^", "&", "%", "*", "**",
     };
 
+    for(int i=0; i < (int)supported_operators.size(); i++)
+    {
+        if(supported_operators[i] == in)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+constexpr
+uint16_t exec_op(uint16_t one, uint16_t two, std::string_view op)
+{
+    if(op == "+")
+        return one + two;
+
+    if(op == "-")
+        return one - two;
+
+    if(op == "/")
+    {
+        if(two == 0)
+            return 0;
+
+        return one / two;
+    }
+
+    if(op == "|")
+        return one | two;
+
+    if(op == "^")
+        return one ^ two;
+
+    if(op == "&")
+        return one & two;
+
+    if(op == "%")
+    {
+        if(two == 0)
+            return 0;
+
+        return one % two;
+    }
+
+    if(op == "*")
+        return one * two;
+
+    if(op == "**")
+        return std::pow(one, two);
+
+    return 0;
+}
+
+struct expression_result
+{
+    std::optional<std::string_view> op = std::nullopt;
+    std::optional<std::string_view> which_register = std::nullopt;
+    std::optional<uint16_t> word = std::nullopt;
+
+    /*constexpr
+    bool combine_into(expression_result& res)
+    {
+        if(!op.has_value())
+            return false;
+
+        std::string_view val = op.value();
+
+        if(which_register.has_value() && (val != '+' && val != '-'))
+            return false;
+
+        if(!which_register.has_value())
+        {
+            if(!res.which_register.has)
+        }
+    }*/
+
+    constexpr
+    bool fully_resolved()
+    {
+        return word.has_value() && !which_register.has_value();
+    }
+};
+
+constexpr std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vector<std::string_view, 512>& stk, int which)
+{
+    if(get_operator_idx(stk[which]) != -1)
+    {
+        int left = which - 2;
+        int right = which - 1;
+
+        if(left < 0)
+            return std::nullopt;
+
+        expression_result me;
+        me.op = stk[which];
+
+        std::optional<expression_result> left_exp_opt = resolve_expression(sym, stk, left);
+        std::optional<expression_result> right_exp_opt = resolve_expression(sym, stk, right);
+
+        if(!left_exp_opt.has_value())
+            return std::nullopt;
+
+        if(!right_exp_opt.has_value())
+            return std::nullopt;
+
+        expression_result& left_exp = left_exp_opt.value();
+        expression_result& right_exp = right_exp_opt.value();
+
+        ///can't ever have two registers in an expression, even two of the same register
+        if(!left_exp.fully_resolved() && !right_exp.fully_resolved())
+            return std::nullopt;
+
+        if(left_exp.fully_resolved() &&
+           right_exp.fully_resolved())
+        {
+            me.word = exec_op(left_exp.word.value(), right_exp.word.value(), stk[which]);
+
+            return me;
+        }
+
+        if(left_exp.which_register.has_value())
+        {
+            if(!right_exp.fully_resolved())
+                return std::nullopt;
+
+            if(left_exp.op.has_value())
+            {
+                if(left_exp.op.value() == "+" && me.op.value() == "+")
+                {
+                    me.word = exec_op(left_exp.word.value(), right_exp.word.value(), "+");
+                    me.which_register = left_exp.which_register;
+
+                    return me;
+                }
+
+                return std::nullopt;
+            }
+            else if(me.op.value() == "+")
+            {
+                me.word = right_exp.word;
+                me.which_register = left_exp.which_register;
+
+                return me;
+            }
+            else
+            {
+                return std::nullopt;
+            }
+        }
+
+        if(right_exp.which_register.has_value())
+        {
+            if(!left_exp.fully_resolved())
+                return std::nullopt;
+
+            if(right_exp.op.has_value())
+            {
+                if(right_exp.op.value() == "+" && me.op.value() == "+")
+                {
+                    me.word = exec_op(left_exp.word.value(), right_exp.word.value(), "+");
+                    me.which_register = right_exp.which_register;
+
+                    return me;
+                }
+
+                return std::nullopt;
+            }
+            else if(me.op.value() == "+")
+            {
+                me.word = left_exp.word;
+                me.which_register = right_exp.which_register;
+
+                return me;
+            }
+            else
+            {
+                return std::nullopt;
+            }
+        }
+
+        return std::nullopt;
+    }
+    else
+    {
+        expression_result res;
+
+        if(is_constant(stk[which]))
+        {
+            res.word = get_constant(stk[which]);
+            return res;
+        }
+        else
+        {
+            if(get_register_assembly_value_from_name(stk[which]).has_value())
+            {
+                res.which_register = stk[which];
+                return res;
+            }
+
+            if(iequal(stk[which], "sp"))
+            {
+                ///the sp register
+                res.which_register = stk[which];
+                return res;
+            }
+
+            auto val_opt = sym.get_symbol_definition(stk[which]);
+
+            if(val_opt.has_value())
+            {
+                res.word = val_opt.value();
+                return res;
+            }
+
+            return std::nullopt;
+        }
+    }
+}
+
+///shunting yard
+constexpr std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
+{
     std::array precedence
     {
         4, 4, 3, 10, 9, 8, 3, 3, 2
@@ -233,23 +450,10 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
         1, 1, 1, 1, 1, 1, 1, 1, 0
     };
 
-    static_assert(precedence.size() == supported_operators.size());
+    static_assert(precedence.size() == left_associative.size());
 
     stack_vector<std::string_view, 512> operator_stack;
     expression_result res;
-
-    auto get_operator_idx = [&](std::string_view in)
-    {
-        for(int i=0; i < (int)supported_operators.size(); i++)
-        {
-            if(supported_operators[i] == in)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    };
 
     auto get_precedence = [&](std::string_view in)
     {
@@ -337,12 +541,15 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
         operator_stack.pop_back();
     }
 
-    for(auto i : output_queue)
+    /*for(auto i : output_queue)
     {
         std::cout << i << std::endl;
-    }
+    }*/
 
-    return res;
+    if(output_queue.size() == 0)
+        return std::nullopt;
+
+    return resolve_expression(sym, output_queue, (int)output_queue.size() - 1);
 }
 
 // so
