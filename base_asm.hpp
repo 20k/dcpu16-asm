@@ -588,9 +588,6 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         if(iequal(extracted, "sp"))
             return 0x19;
 
-        // unimpl [register + next word]
-        // unimpl [sp + next word]
-
         if(is_constant(extracted))
         {
             out = get_constant(extracted);
@@ -643,6 +640,8 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
                     if(reg_val_opt.has_value())
                     {
+                        //std::cout << "OUT " << eres.word.value() << " 0x10 " << reg_val_opt.value() << std::endl;
+
                         out = eres.word.value();
                         return 0x10 + reg_val_opt.value();
                     }
