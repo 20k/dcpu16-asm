@@ -81,11 +81,23 @@ struct define
     std::string_view name = "";
 };
 
+struct delayed_expression
+{
+    // root instruction
+    uint16_t base_word = 0;
+    // the additional word
+    uint16_t extra_word = 0;
+    arg_pos::type type;
+    std::string_view expression = "";
+    bool is_memory_reference = true;
+};
+
 struct symbol_table
 {
     stack_vector<label, 1024> usages;
     stack_vector<label, 1024> definitions;
     stack_vector<define, 1024> defines;
+    stack_vector<delayed_expression, 1024> expressions;
 
     constexpr
     std::optional<uint16_t> get_symbol_definition(std::string_view name)
@@ -285,7 +297,7 @@ struct expression_result
 };
 
 inline
-std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vector<std::string_view, 512>& stk)
+std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vector<std::string_view, 512>& stk, bool& should_delay)
 {
     std::string_view found = stk.back();
 
@@ -295,8 +307,8 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
         me.op = stk.back();
         stk.pop_back();
 
-        std::optional<expression_result> right_exp_opt = resolve_expression(sym, stk);
-        std::optional<expression_result> left_exp_opt = resolve_expression(sym, stk);
+        std::optional<expression_result> right_exp_opt = resolve_expression(sym, stk, should_delay);
+        std::optional<expression_result> left_exp_opt = resolve_expression(sym, stk, should_delay);
 
         if(!left_exp_opt.has_value())
             return std::nullopt;
@@ -425,6 +437,9 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
                 return res;
             }
 
+            if(is_label_reference(elem))
+                should_delay = true;
+
             return std::nullopt;
         }
     }
@@ -432,7 +447,7 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
 
 ///shunting yard
 inline
-std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
+std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr, bool& should_delay)
 {
     std::array precedence
     {
@@ -543,7 +558,7 @@ std::optional<expression_result> parse_expression(symbol_table& sym, std::string
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    return resolve_expression(sym, output_queue);
+    return resolve_expression(sym, output_queue, should_delay);
 }
 
 // so
@@ -552,7 +567,7 @@ std::optional<expression_result> parse_expression(symbol_table& sym, std::string
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, symbol_table& sym)
+constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, std::optional<std::string_view>& is_expression, symbol_table& sym)
 {
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
@@ -600,7 +615,8 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
             return 0x1e;
         }
 
-        auto expression_opt = parse_expression(sym, extracted);
+        bool should_delay = false;
+        auto expression_opt = parse_expression(sym, extracted, should_delay);
 
         if(expression_opt.has_value())
         {
@@ -650,6 +666,13 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
                     }
                 }
             }
+        }
+
+        if(should_delay)
+        {
+            out = 0;
+            is_expression = extracted;
+            return 0x10; // placeholder
         }
     }
 
@@ -956,11 +979,13 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 std::optional<int32_t> extra_b;
                 std::optional<std::string_view> is_label_b;
-                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, sym);
+                std::optional<std::string_view> is_expression_b;
+                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, is_expression_b, sym);
 
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, sym);
+                std::optional<std::string_view> is_expression_a;
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym);
 
                 if(!compiled_b.has_value())
                 {
@@ -975,6 +1000,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                 }
 
                 auto instr = construct_type_a(code, compiled_a.value(), compiled_b.value());
+
+                uint16_t instruction_word = out.size();
 
                 out.push_back(instr);
 
@@ -995,6 +1022,18 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
+                    }
+
+                    if(is_expression_a.has_value())
+                    {
+                        delayed_expression delayed;
+                        delayed.base_word = instruction_word;
+                        delayed.extra_word = out.size();
+                        delayed.expression = is_expression_a.value();
+                        delayed.type = arg_pos::A;
+                        delayed.is_memory_reference = is_address(val_a);
+
+                        sym.expressions.push_back(delayed);
                     }
 
                     out.push_back(promote_a);
@@ -1019,6 +1058,18 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         sym.usages.push_back(l);
                     }
 
+                    if(is_expression_b.has_value())
+                    {
+                        delayed_expression delayed;
+                        delayed.base_word = instruction_word;
+                        delayed.extra_word = out.size();
+                        delayed.expression = is_expression_b.value();
+                        delayed.type = arg_pos::B;
+                        delayed.is_memory_reference = is_address(val_b);
+
+                        sym.expressions.push_back(delayed);
+                    }
+
                     out.push_back(promote_b);
                 }
 
@@ -1031,7 +1082,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, sym);
+                std::optional<std::string_view> is_expression_a;
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym);
 
                 if(!compiled_a.has_value())
                 {
@@ -1040,6 +1092,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                 }
 
                 auto instr = construct_type_b(code, compiled_a.value());
+
+                uint16_t instruction_word = out.size();
 
                 out.push_back(instr);
 
@@ -1060,6 +1114,18 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
+                    }
+
+                    if(is_expression_a.has_value())
+                    {
+                        delayed_expression delayed;
+                        delayed.base_word = instruction_word;
+                        delayed.extra_word = out.size();
+                        delayed.expression = is_expression_a.value();
+                        delayed.type = arg_pos::A;
+                        delayed.is_memory_reference = is_address(val_a);
+
+                        sym.expressions.push_back(delayed);
                     }
 
                     out.push_back(promote_a);
@@ -1193,6 +1259,115 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
             err.name_in_source = j.name;
 
             return {std::nullopt, err};
+        }
+    }
+
+    for(delayed_expression& delayed : sym.expressions)
+    {
+        bool should_delay = false;
+        auto value_opt = parse_expression(sym, delayed.expression, should_delay);
+
+        error_info err;
+        err.character = 0;
+        err.line = rinfo.pc_to_source_line[delayed.base_word];
+        err.name_in_source = delayed.expression;
+
+        if(should_delay)
+        {
+            err.msg = "Expression contains undefined label";
+
+            return {std::nullopt, err};
+        }
+
+        expression_result& res = value_opt.value();
+
+        uint16_t& mem = rinfo.mem.svec[delayed.base_word];
+
+        if(res.which_register.has_value())
+        {
+            if(!delayed.is_memory_reference && res.word.has_value())
+            {
+                err.msg = "Cannot execute reg + constant unless its in a memory reference";
+                return {std::nullopt, err};
+            }
+
+            uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+
+            if(res.op.has_value() && res.op.value() != "+")
+            {
+                err.msg = "Expressions must boil down to [reg + constant], or solely reg or solely constant otherwise";
+
+                return {std::nullopt, err};
+            }
+
+            auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
+
+            uint16_t offset = 0;
+
+            if(reg_opt.has_value())
+            {
+                offset = 0x10 + reg_opt.value();
+            }
+            else if(iequal(res.which_register.value(), "sp"))
+            {
+                offset = 0x1a;
+            }
+            else
+            {
+                err.msg = "Expression tried to use something which was not a register or a label";
+                return {std::nullopt, err};
+            }
+
+            rinfo.mem.svec[delayed.extra_word] = extra_value;
+
+            if(delayed.type == arg_pos::A)
+            {
+                mem = mem & 0b0000001111111111;
+                mem = mem | (offset << 10);
+            }
+
+            if(delayed.type == arg_pos::B)
+            {
+                mem = mem & 0x1111110000011111;
+                mem = mem | (offset << 5);
+            }
+        }
+        else
+        {
+            uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+
+            if(res.word.has_value())
+            {
+                uint16_t offset = 0;
+
+                if(delayed.is_memory_reference)
+                {
+                    offset = 0x1e;
+                }
+                else
+                {
+                    offset = 0x1f;
+                }
+
+                rinfo.mem.svec[delayed.extra_word] = extra_value;
+
+                if(delayed.type == arg_pos::A)
+                {
+                    mem = mem & 0b0000001111111111;
+                    mem = mem | (offset << 10);
+                }
+
+                if(delayed.type == arg_pos::B)
+                {
+                    mem = mem & 0x1111110000011111;
+                    mem = mem | (offset << 5);
+                }
+            }
+            else
+            {
+                err.msg = "Something went wrong in delayed expression evaluation";
+                return {std::nullopt, err};
+            }
         }
     }
 
