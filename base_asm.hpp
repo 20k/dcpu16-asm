@@ -222,10 +222,12 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
     {
         "+", "-", "/", "|", "^", "&", "%", "*", "**",
     };
+
     std::array precedence
     {
         4, 4, 3, 10, 9, 8, 3, 3, 2
     };
+
     std::array left_associative
     {
         1, 1, 1, 1, 1, 1, 1, 1, 0
@@ -238,18 +240,15 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
 
     auto get_operator_idx = [&](std::string_view in)
     {
-        int operator_idx = -1;
-
         for(int i=0; i < (int)supported_operators.size(); i++)
         {
             if(supported_operators[i] == in)
             {
-                operator_idx = i;
-                break;
+                return i;
             }
         }
 
-        return operator_idx;
+        return -1;
     };
 
     auto get_precedence = [&](std::string_view in)
@@ -268,8 +267,6 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
     {
         std::string_view consumed = consume_expression_token(expr);
 
-        std::cout << "CONSUMED " << consumed << std::endl;
-
         if(consumed.size() == 0)
             break;
 
@@ -286,14 +283,14 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
 
         if(is_constant(consumed))
         {
-            operator_stack.push_back(consumed);
+            output_queue.push_back(consumed);
         }
-        else if(get_operator_idx(consumed))
+        else if(get_operator_idx(consumed) != -1)
         {
-            while(operator_stack.size() > 0 &&
+            while(operator_stack.size() > 0 && (get_operator_idx(operator_stack.back()) != -1) &&
                   operator_stack.back() != "(" &&
                   (
-                    (get_precedence(operator_stack.back()) > get_precedence(consumed)) ||
+                    (get_precedence(operator_stack.back()) < get_precedence(consumed)) ||
                         ((get_precedence(operator_stack.back()) == get_precedence(consumed)) && is_left_associative(consumed))))
             {
                 output_queue.push_back(operator_stack.back());
