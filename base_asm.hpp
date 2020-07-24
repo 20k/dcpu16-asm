@@ -8,8 +8,7 @@
 #include "stack_vector.hpp"
 #include "shared.hpp"
 #include "util.hpp"
-
-#define MEM_SIZE 0x10000
+#include "base_asm_fwd.hpp"
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -222,14 +221,6 @@ struct opcode
     std::string_view view;
     int type;
     uint16_t code;
-};
-
-struct error_info
-{
-    std::string_view name_in_source;
-    std::string_view msg;
-    int character = 0;
-    int line = 0;
 };
 
 inline
@@ -601,15 +592,6 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
     return err;
 }
 
-struct return_info
-{
-    stack_vector<uint16_t, MEM_SIZE> mem;
-    stack_vector<uint16_t, MEM_SIZE> translation_map;
-    stack_vector<uint16_t, MEM_SIZE> pc_to_source_line;
-
-    constexpr return_info(){}
-};
-
 constexpr
 std::pair<std::optional<return_info>, error_info> assemble(std::string_view text)
 {
@@ -725,7 +707,5 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
     return {rinfo, error_info()};
 }
-
-std::pair<std::optional<return_info>, error_info> assemble_fwd(std::string_view text);
 
 #endif // BASE_ASM_HPP_INCLUDED
