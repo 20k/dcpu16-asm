@@ -174,6 +174,11 @@ constexpr bool is_digit(char in)
     return in >= '0' && in <= '9';
 }
 
+constexpr bool is_binary_digit(char in)
+{
+    return in == '0' || in == '1';
+}
+
 inline
 constexpr bool is_constant(std::string_view in)
 {
@@ -190,6 +195,17 @@ constexpr bool is_constant(std::string_view in)
         for(int i=2; i < (int)in.size(); i++)
         {
             if(!is_hex_digit(in[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    if(in.starts_with("0b"))
+    {
+        for(int i=2; i < (int)in.size(); i++)
+        {
+            if(!is_binary_digit(in[i]))
                 return false;
         }
 
@@ -232,6 +248,11 @@ constexpr int get_hex_digit(char in)
     return 0;
 }
 
+constexpr int get_binary_digit(char in)
+{
+    return in == '1' ? 1 : 0;
+}
+
 inline
 constexpr uint32_t positive_stoi_cxper(std::string_view in, int radix)
 {
@@ -263,6 +284,16 @@ constexpr uint32_t positive_stoi_cxper(std::string_view in, int radix)
             value += base * get_hex_digit(in[i]);
         }
 
+        if(radix == 2)
+        {
+            if(!is_binary_digit(in[i]))
+            {
+                return value;
+            }
+
+            value += base * get_binary_digit(in[i]);
+        }
+
         base *= radix;
     }
 
@@ -288,6 +319,10 @@ constexpr uint16_t get_constant(std::string_view in)
     if(in.starts_with("0x"))
     {
         n = positive_stoi_cxper(in, 16);
+    }
+    else if(in.starts_with("0b"))
+    {
+        n = positive_stoi_cxper(in, 2);
     }
     else
     {
