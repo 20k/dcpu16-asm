@@ -80,7 +80,7 @@ struct stack_vector
     }
 
     constexpr
-    auto back() const
+    const auto& back() const
     {
         if(idx == 0)
             return svec[0];

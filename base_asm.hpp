@@ -301,21 +301,19 @@ struct expression_result
     }
 };
 
-constexpr std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vector<std::string_view, 512>& stk, int which)
+inline
+std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vector<std::string_view, 512>& stk)
 {
-    if(get_operator_idx(stk[which]) != -1)
+    std::string_view found = stk.back();
+
+    if(get_operator_idx(found) != -1)
     {
-        int left = which - 2;
-        int right = which - 1;
-
-        if(left < 0)
-            return std::nullopt;
-
         expression_result me;
-        me.op = stk[which];
+        me.op = stk.back();
+        stk.pop_back();
 
-        std::optional<expression_result> left_exp_opt = resolve_expression(sym, stk, left);
-        std::optional<expression_result> right_exp_opt = resolve_expression(sym, stk, right);
+        std::optional<expression_result> right_exp_opt = resolve_expression(sym, stk);
+        std::optional<expression_result> left_exp_opt = resolve_expression(sym, stk);
 
         if(!left_exp_opt.has_value())
             return std::nullopt;
@@ -333,7 +331,7 @@ constexpr std::optional<expression_result> resolve_expression(symbol_table& sym,
         if(left_exp.fully_resolved() &&
            right_exp.fully_resolved())
         {
-            me.word = exec_op(left_exp.word.value(), right_exp.word.value(), stk[which]);
+            me.word = exec_op(left_exp.word.value(), right_exp.word.value(), me.op.value());
 
             return me;
         }
@@ -404,27 +402,31 @@ constexpr std::optional<expression_result> resolve_expression(symbol_table& sym,
     {
         expression_result res;
 
-        if(is_constant(stk[which]))
+        std::string_view elem = stk.back();
+        stk.pop_back();
+
+        if(is_constant(elem))
         {
-            res.word = get_constant(stk[which]);
+            res.word = get_constant(elem);
             return res;
         }
         else
         {
-            if(get_register_assembly_value_from_name(stk[which]).has_value())
+            if(get_register_assembly_value_from_name(elem).has_value())
             {
-                res.which_register = stk[which];
+                res.which_register = elem;
+
                 return res;
             }
 
-            if(iequal(stk[which], "sp"))
+            if(iequal(elem, "sp"))
             {
                 ///the sp register
-                res.which_register = stk[which];
+                res.which_register = elem;
                 return res;
             }
 
-            auto val_opt = sym.get_symbol_definition(stk[which]);
+            auto val_opt = sym.get_symbol_definition(elem);
 
             if(val_opt.has_value())
             {
@@ -438,7 +440,8 @@ constexpr std::optional<expression_result> resolve_expression(symbol_table& sym,
 }
 
 ///shunting yard
-constexpr std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
+inline
+std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr)
 {
     std::array precedence
     {
@@ -549,7 +552,7 @@ constexpr std::optional<expression_result> parse_expression(symbol_table& sym, s
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    return resolve_expression(sym, output_queue, (int)output_queue.size() - 1);
+    return resolve_expression(sym, output_queue);
 }
 
 // so
@@ -607,6 +610,56 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
             out = 0;
             is_label = extracted;
             return 0x1e;
+        }
+
+        auto expression_opt = parse_expression(sym, extracted);
+
+        if(expression_opt.has_value())
+        {
+            expression_result& eres = expression_opt.value();
+
+            if(eres.fully_resolved())
+            {
+                out = eres.word.value();
+                return 0x1e;
+            }
+
+            if(eres.which_register.has_value())
+            {
+                if(eres.op.has_value() && eres.op.value() != "+")
+                    return std::nullopt;
+
+                std::string_view reg = eres.which_register.value();
+
+                if(eres.word.has_value() && eres.word.value() != 0)
+                {
+                    if(iequal(reg, "sp"))
+                    {
+                        out = eres.word.value();
+                        return 0x1a;
+                    }
+
+                    auto reg_val_opt = get_register_assembly_value_from_name(reg);
+
+                    if(reg_val_opt.has_value())
+                    {
+                        out = eres.word.value();
+                        return 0x10 + reg_val_opt.value();
+                    }
+                }
+                else
+                {
+                    if(iequal(reg, "sp"))
+                        return 0x19;
+
+                    auto reg_val_opt = get_register_assembly_value_from_name(reg);
+
+                    if(reg_val_opt.has_value())
+                    {
+                        return 0x08 + reg_val_opt.value();
+                    }
+                }
+            }
         }
     }
 
