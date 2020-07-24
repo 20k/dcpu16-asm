@@ -343,6 +343,14 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
 
                 return me;
             }
+            else if(me.op.value() == "-")
+            {
+                me.word = -right_exp.word.value();
+                me.which_register = left_exp.which_register;
+                me.op = "+";
+
+                return me;
+            }
             else
             {
                 return std::nullopt;

@@ -251,6 +251,9 @@ constexpr bool is_constant(std::string_view in)
         in.remove_prefix(1);
     }
 
+    if(in.size() == 0)
+        return false;
+
     if(in.starts_with("0x"))
     {
         for(int i=2; i < (int)in.size(); i++)
