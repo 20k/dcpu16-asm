@@ -693,6 +693,9 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
     if(iequal(in, "push") || iequal(in, "pop"))
         return 0x18;
 
+    if(iequal(in, "peek"))
+        return 0x19;
+
     if(iequal(in, "sp"))
         return 0x1b;
 
@@ -868,13 +871,28 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         {
             auto value = consume_next(in, true);
 
-            if(is_label_reference(value) && sym.get_symbol_definition(value).has_value())
-            {
-                out.push_back(sym.get_symbol_definition(value).value());
-            }
-            else if(is_constant(value))
+            if(is_constant(value))
             {
                 out.push_back(get_constant(value));
+            }
+            else if(is_label_reference(value))
+            {
+                auto sym_opt = sym.get_symbol_definition(value);
+
+                if(sym_opt.has_value())
+                {
+                    out.push_back(sym_opt.value());
+                }
+                else
+                {
+                    label use;
+                    use.name = value;
+                    use.offset = out.size();
+
+                    sym.usages.push_back(use);
+
+                    out.push_back(0);
+                }
             }
             else if(is_string(value))
             {
@@ -1269,7 +1287,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
             error_info err;
             err.msg = "Label used with no definition";
             err.character = 0;
-            err.line = 0;
+            err.line = rinfo.pc_to_source_line[j.offset];
             err.name_in_source = j.name;
 
             return {std::nullopt, err};
