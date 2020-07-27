@@ -844,6 +844,10 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
     if(iequal(".def", consumed_name) || iequal("def", consumed_name))
     {
         auto label_name = consume_next(in, true);
+
+        if(peek_next(in, true) == ",")
+            consume_next(in, true);
+
         auto label_value = consume_next(in, true);
 
         if(!is_constant(label_value))
