@@ -711,7 +711,7 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
         if(apos == arg_pos::A)
         {
-            if(val == -1)
+            if(val == 0xFFFF)
                 return 0x20;
 
             if(val >= 0 && val <= 30)
