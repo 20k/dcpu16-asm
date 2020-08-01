@@ -11,6 +11,7 @@
 #include "base_asm_fwd.hpp"
 #include <iostream>
 #include <cmath>
+#include <assert.h>
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -21,7 +22,6 @@ bool should_prune(char c)
     return c == ' ' || c == '\n' || c == ',';
 }
 
-inline
 constexpr std::optional<int> get_register_assembly_value_from_name(std::string_view in)
 {
     if(iequal(in, "a"))
@@ -49,6 +49,26 @@ constexpr std::optional<int> get_register_assembly_value_from_name(std::string_v
         return 7;
 
     return std::nullopt;
+}
+
+constexpr std::optional<int> get_register_immediate_encoding(std::string_view in)
+{
+    if(auto value_opt = get_register_assembly_value_from_name(in); value_opt.has_value())
+    {
+        ///1:1 mapping
+        return value_opt.value();
+    }
+
+    if(iequal(in, "sp"))
+        return 0x1b;
+
+    if(iequal(in, "pc"))
+        return 0x1c;
+
+    if(iequal(in, "ex"))
+        return 0x1d;
+
+   return std::nullopt;
 }
 
 inline
@@ -100,7 +120,7 @@ struct symbol_table
     stack_vector<delayed_expression, 1024> expressions;
 
     constexpr
-    std::optional<uint16_t> get_symbol_definition(std::string_view name)
+    std::optional<uint16_t> get_symbol_definition(std::string_view name) const
     {
         for(int i=0; i < (int)definitions.size(); i++)
         {
@@ -290,51 +310,53 @@ struct expression_result
     std::optional<uint16_t> word = std::nullopt;
 
     constexpr
-    bool fully_resolved()
+    bool fully_resolved() const
     {
         return word.has_value() && !which_register.has_value();
     }
 };
 
-inline
-std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vector<std::string_view, 512>& stk, bool& should_delay)
+constexpr
+std::pair<std::optional<expression_result>, int> resolve_expression(const symbol_table& sym, const stack_vector<std::string_view, 512>& stk, bool& should_delay, int idx)
 {
-    std::string_view found = stk.back();
+    std::string_view found = stk[idx - 1];
 
     if(get_operator_idx(found) != -1)
     {
         expression_result me;
-        me.op = stk.back();
-        stk.pop_back();
+        me.op = found;
+        idx--;
 
-        std::optional<expression_result> right_exp_opt = resolve_expression(sym, stk, should_delay);
-        std::optional<expression_result> left_exp_opt = resolve_expression(sym, stk, should_delay);
+        auto [right_exp_opt, idx1] = resolve_expression(sym, stk, should_delay, idx);
+        auto [left_exp_opt, idx2] = resolve_expression(sym, stk, should_delay, idx1);
+
+        idx = idx2;
 
         if(!left_exp_opt.has_value())
-            return std::nullopt;
+            return {std::nullopt, idx};
 
         if(!right_exp_opt.has_value())
-            return std::nullopt;
+            return {std::nullopt, idx};
 
-        expression_result& left_exp = left_exp_opt.value();
-        expression_result& right_exp = right_exp_opt.value();
+        const expression_result& left_exp = left_exp_opt.value();
+        const expression_result& right_exp = right_exp_opt.value();
 
         ///can't ever have two registers in an expression, even two of the same register
         if(!left_exp.fully_resolved() && !right_exp.fully_resolved())
-            return std::nullopt;
+            return {std::nullopt, idx};
 
         if(left_exp.fully_resolved() &&
            right_exp.fully_resolved())
         {
             me.word = exec_op(left_exp.word.value(), right_exp.word.value(), me.op.value());
 
-            return me;
+            return {me, idx};
         }
 
         if(left_exp.which_register.has_value())
         {
             if(!right_exp.fully_resolved())
-                return std::nullopt;
+                return {std::nullopt, idx};
 
             if(left_exp.op.has_value())
             {
@@ -343,7 +365,7 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
                     me.word = exec_op(left_exp.word.value(), right_exp.word.value(), "+");
                     me.which_register = left_exp.which_register;
 
-                    return me;
+                    return {me, idx};
                 }
 
                 if(left_exp.op.value() == "+" && me.op.value() == "-")
@@ -352,17 +374,17 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
                     me.which_register = left_exp.which_register;
                     me.op = "+";
 
-                    return me;
+                    return {me, idx};
                 }
 
-                return std::nullopt;
+                return {std::nullopt, idx};
             }
             else if(me.op.value() == "+")
             {
                 me.word = right_exp.word;
                 me.which_register = left_exp.which_register;
 
-                return me;
+                return {me, idx};
             }
             else if(me.op.value() == "-")
             {
@@ -370,18 +392,18 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
                 me.which_register = left_exp.which_register;
                 me.op = "+";
 
-                return me;
+                return {me, idx};
             }
             else
             {
-                return std::nullopt;
+                return {std::nullopt, idx};
             }
         }
 
         if(right_exp.which_register.has_value())
         {
             if(!left_exp.fully_resolved())
-                return std::nullopt;
+                return {std::nullopt, idx};
 
             if(right_exp.op.has_value())
             {
@@ -390,37 +412,37 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
                     me.word = exec_op(left_exp.word.value(), right_exp.word.value(), "+");
                     me.which_register = right_exp.which_register;
 
-                    return me;
+                    return {me, idx};
                 }
 
-                return std::nullopt;
+                return {std::nullopt, idx};
             }
             else if(me.op.value() == "+")
             {
                 me.word = left_exp.word;
                 me.which_register = right_exp.which_register;
 
-                return me;
+                return {me, idx};
             }
             else
             {
-                return std::nullopt;
+                return {std::nullopt, idx};
             }
         }
 
-        return std::nullopt;
+        return {std::nullopt, idx};
     }
     else
     {
         expression_result res;
 
-        std::string_view elem = stk.back();
-        stk.pop_back();
+        std::string_view elem = stk[idx - 1];
+        idx--;
 
         if(is_constant(elem))
         {
             res.word = get_constant(elem);
-            return res;
+            return {res, idx};
         }
         else
         {
@@ -428,14 +450,14 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
             {
                 res.which_register = elem;
 
-                return res;
+                return {res, idx};
             }
 
             if(iequal(elem, "sp"))
             {
                 ///the sp register
                 res.which_register = elem;
-                return res;
+                return {res, idx};
             }
 
             auto val_opt = sym.get_symbol_definition(elem);
@@ -443,20 +465,20 @@ std::optional<expression_result> resolve_expression(symbol_table& sym, stack_vec
             if(val_opt.has_value())
             {
                 res.word = val_opt.value();
-                return res;
+                return {res, idx};
             }
 
             if(is_label_reference(elem))
                 should_delay = true;
 
-            return std::nullopt;
+            return {std::nullopt, idx};
         }
     }
 }
 
 ///shunting yard
-inline
-std::optional<expression_result> parse_expression(symbol_table& sym, std::string_view expr, bool& should_delay)
+constexpr
+std::optional<expression_result> parse_expression(const symbol_table& sym, std::string_view expr, bool& should_delay)
 {
     std::array precedence
     {
@@ -567,12 +589,35 @@ std::optional<expression_result> parse_expression(symbol_table& sym, std::string
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    auto found = resolve_expression(sym, output_queue, should_delay);
+    auto [found, fin_idx] = resolve_expression(sym, output_queue, should_delay, output_queue.idx);
 
-    if(output_queue.size() > 0)
+    if(fin_idx > 0)
         return std::nullopt;
 
     return found;
+}
+
+constexpr
+uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<int32_t>& out)
+{
+    if(apos == arg_pos::A)
+    {
+        if(val == 0xFFFF)
+            return 0x20;
+
+        if(val >= 0 && val <= 30)
+            return 0x21 + val;
+        else
+        {
+            out = val;
+            return 0x1f;
+        }
+    }
+    else
+    {
+        out = val;
+        return 0x1f;
+    }
 }
 
 // so
@@ -608,27 +653,6 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         if(iequal(extracted, "sp"))
             return 0x19;
 
-        if(is_constant(extracted))
-        {
-            out = get_constant(extracted);
-            return 0x1e;
-        }
-
-        if(is_label_reference(extracted))
-        {
-            auto test_val_opt = sym.get_symbol_definition(extracted);
-
-            if(test_val_opt.has_value())
-            {
-                out = test_val_opt.value();
-                return 0x1e;
-            }
-
-            out = 0;
-            is_label = extracted;
-            return 0x1e;
-        }
-
         bool should_delay = false;
         auto expression_opt = parse_expression(sym, extracted, should_delay);
 
@@ -661,8 +685,6 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
                     if(reg_val_opt.has_value())
                     {
-                        //std::cout << "OUT " << eres.word.value() << " 0x10 " << reg_val_opt.value() << std::endl;
-
                         out = eres.word.value();
                         return 0x10 + reg_val_opt.value();
                     }
@@ -709,24 +731,7 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
     {
         auto val = get_constant(in);
 
-        if(apos == arg_pos::A)
-        {
-            if(val == 0xFFFF)
-                return 0x20;
-
-            if(val >= 0 && val <= 30)
-                return 0x21 + val;
-            else
-            {
-                out = val;
-                return 0x1f;
-            }
-        }
-        else
-        {
-            out = val;
-            return 0x1f;
-        }
+        return decode_pack_constant(val, apos, out);
     }
 
     if(is_label_reference(in))
@@ -734,14 +739,40 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         auto test_val_opt = sym.get_symbol_definition(in);
 
         if(test_val_opt.has_value())
-        {
-            out = test_val_opt.value();
-            return 0x1f;
-        }
+            return decode_pack_constant(test_val_opt.value(), apos, out);
 
         out = 0;
         is_label = in;
         return 0x1f;
+    }
+
+    bool should_delay = false;
+    auto expression_opt = parse_expression(sym, in, should_delay);
+
+    if(expression_opt.has_value())
+    {
+        expression_result& eres = expression_opt.value();
+
+        if(eres.word.has_value() && eres.which_register.has_value())
+            return std::nullopt;
+
+        if(eres.word.has_value())
+            return decode_pack_constant(eres.word.value(), apos, out);
+
+        if(eres.which_register.has_value())
+        {
+            auto decoded = get_register_immediate_encoding(eres.which_register.value());
+
+            if(decoded.has_value())
+                return decoded;
+        }
+    }
+
+    if(should_delay)
+    {
+        out = 0;
+        is_expression = in;
+        return 0x1f; // next word (placeholder)
     }
 
     return std::nullopt;
@@ -1336,22 +1367,39 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
                 return {std::nullopt, err};
             }
 
-            auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
-
             uint16_t offset = 0;
 
-            if(reg_opt.has_value())
+            if(delayed.is_memory_reference)
             {
-                offset = 0x10 + reg_opt.value();
-            }
-            else if(iequal(res.which_register.value(), "sp"))
-            {
-                offset = 0x1a;
+                auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
+
+                if(reg_opt.has_value())
+                {
+                    offset = 0x10 + reg_opt.value();
+                }
+                else if(iequal(res.which_register.value(), "sp"))
+                {
+                    offset = 0x1a;
+                }
+                else
+                {
+                    err.msg = "Expression tried to use something which was not a register or a label";
+                    return {std::nullopt, err};
+                }
             }
             else
             {
-                err.msg = "Expression tried to use something which was not a register or a label";
-                return {std::nullopt, err};
+                auto reg_opt = get_register_immediate_encoding(res.which_register.value());
+
+                if(reg_opt.has_value())
+                {
+                    offset = reg_opt.value();
+                }
+                else
+                {
+                    err.msg = "Expression involving a register failed to decode, invalid register?";
+                    return {std::nullopt, err};
+                }
             }
 
             rinfo.mem.svec[delayed.extra_word] = extra_value;
@@ -1382,6 +1430,12 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
                 }
                 else
                 {
+                    if(res.which_register.has_value())
+                    {
+                        err.msg = "Cannot have both a register and a constant as a literal";
+                        return {std::nullopt, err};
+                    }
+
                     offset = 0x1f;
                 }
 

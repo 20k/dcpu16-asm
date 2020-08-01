@@ -53,7 +53,7 @@ struct stack_vector
     }
 
     constexpr
-    size_t size()
+    size_t size() const
     {
         return idx;
     }
