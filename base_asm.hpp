@@ -138,7 +138,7 @@ struct symbol_table
     }
 };
 
-constexpr std::string_view consume_expression_token(std::string_view& in)
+constexpr std::optional<std::string_view> consume_expression_token(std::string_view& in)
 {
     while(in.size() > 0 && (in.front() == ' ' || in.front() == '\t')){in.remove_prefix(1);}
 
@@ -238,7 +238,7 @@ constexpr std::string_view consume_expression_token(std::string_view& in)
             return ret;
         }
 
-        return "No match";
+        return std::nullopt;
     }
 }
 
@@ -509,7 +509,12 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
 
     while(expr.size() > 0)
     {
-        std::string_view consumed = consume_expression_token(expr);
+        auto consumed_opt = consume_expression_token(expr);
+
+        if(!consumed_opt.has_value())
+            return std::nullopt;
+
+        std::string_view consumed = consumed_opt.value();
 
         if(consumed.size() == 0)
             break;
