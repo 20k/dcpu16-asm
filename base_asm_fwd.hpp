@@ -22,6 +22,7 @@ struct return_info
     stack_vector<uint16_t, MEM_SIZE> mem;
     stack_vector<uint16_t, MEM_SIZE> translation_map;
     stack_vector<uint16_t, MEM_SIZE> pc_to_source_line;
+    stack_vector<uint16_t, MEM_SIZE> source_line_to_pc;
 
     constexpr return_info(){}
 };

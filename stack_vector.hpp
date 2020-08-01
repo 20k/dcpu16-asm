@@ -87,6 +87,12 @@ struct stack_vector
 
         return svec[idx - 1];
     }
+
+    constexpr
+    void clear()
+    {
+        idx = 0;
+    }
 };
 
 #endif // STACK_VECTOR_HPP_INCLUDED

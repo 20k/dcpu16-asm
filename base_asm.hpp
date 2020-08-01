@@ -1242,6 +1242,9 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
     size_t start_size = text.size();
     size_t last_mem_size = 0;
+    size_t last_line = 0;
+
+    rinfo.source_line_to_pc.idx = line;
 
     while(text.size() > 0)
     {
@@ -1251,19 +1254,34 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
         auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line);
 
+        uint16_t source_character = offset + token_offset;
+
         for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
         {
-            //rinfo.translation_map[i] = offset;
-            rinfo.translation_map.push_back(offset + token_offset);
+            rinfo.translation_map.push_back(source_character);
+            rinfo.pc_to_source_line.push_back(source_to_line[source_character]);
+        }
+
+        if(rinfo.pc_to_source_line.size() > 0)
+        {
+            for(size_t idx = last_line+1; idx <= rinfo.pc_to_source_line.back(); idx++)
+            {
+                rinfo.source_line_to_pc[idx] = last_mem_size;
+            }
         }
 
         last_mem_size = rinfo.mem.size();
+
+        if(rinfo.pc_to_source_line.size() > 0)
+            last_line = rinfo.pc_to_source_line.back();
 
         if(error_opt.has_value())
         {
             return {std::nullopt, error_opt.value()};
         }
     }
+
+    rinfo.source_line_to_pc[0] = 0;
 
     int last_val = rinfo.translation_map.size();
 
@@ -1277,13 +1295,6 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         }
     }
 
-    for(int idx = 0; idx < (int)rinfo.translation_map.size(); idx++)
-    {
-        uint16_t source_character = rinfo.translation_map[idx];
-
-        rinfo.pc_to_source_line.push_back(source_to_line[source_character]);
-    }
-
     int last_pc_line = (int)rinfo.pc_to_source_line.size() - 1;
 
     if(last_pc_line >= 0)
@@ -1293,6 +1304,17 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
             rinfo.pc_to_source_line[i] = rinfo.pc_to_source_line[last_pc_line] + 1;
         }
     }
+
+    /*for(int i=0; i < (int)rinfo.pc_to_source_line.size() - 1; i++)
+    {
+        int start_idx = rinfo.pc_to_source_line[i];
+        int fin_idx = rinfo.pc_to_source_line[i + 1];
+
+        for(int kk=start_idx; kk <= fin_idx; kk++)
+        {
+            rinfo.source_line_to_pc[kk] = i;
+        }
+    }*/
 
     /*if(sym.definitions.size() > 0 && sym.usages.size() > 0)
     {
