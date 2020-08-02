@@ -1281,7 +1281,17 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         }
     }
 
-    rinfo.source_line_to_pc[0] = 0;
+    if(rinfo.pc_to_source_line.size() > 0)
+    {
+        size_t first_line = rinfo.pc_to_source_line[0];
+
+        for(size_t idx = 0; idx <= first_line; idx++)
+        {
+            rinfo.source_line_to_pc[idx] = 0;
+        }
+    }
+
+    //rinfo.source_line_to_pc[0] = 0;
 
     int last_val = rinfo.translation_map.size();
 
