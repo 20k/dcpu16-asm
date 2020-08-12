@@ -1012,6 +1012,10 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     out.push_back(wide);
                 }
             }
+            else if(value == "?")
+            {
+                out.push_back(0);
+            }
             else
             {
                 err.msg = "Bad .dat, must be constant or label or definition or string";
