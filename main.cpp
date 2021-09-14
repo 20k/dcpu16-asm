@@ -56,7 +56,7 @@ void tests()
 
         while(view.size() > 0)
         {
-            auto found = consume_next(view);
+            auto found = consume_next(view, true);
 
             printf("TOK ");
 
@@ -88,7 +88,7 @@ void tests()
 
 constexpr std::string_view fcheck(std::string_view in)
 {
-    return consume_next(in);
+    return consume_next(in, true);
 }
 
 constexpr void constexpr_tests()
@@ -110,6 +110,10 @@ constexpr void constexpr_tests()
     static_assert(get_constant("-0x1234") == (uint16_t)-0x1234);
     static_assert(get_constant("-1234") == (uint16_t)-1234);
     static_assert(get_constant("1234") == 1234);
+
+    constexpr auto result = assemble("SET X, 10");
+
+    static_assert(result.first.has_value());
 
     //std::optional<uint32_t> out;
     //constexpr auto val = decode_value("x", arg_pos::B, out);

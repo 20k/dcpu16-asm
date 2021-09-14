@@ -12,6 +12,7 @@
 #include <iostream>
 #include <cmath>
 #include <assert.h>
+#include "heap_vector.hpp"
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -114,10 +115,10 @@ struct delayed_expression
 
 struct symbol_table
 {
-    stack_vector<label, 1024> usages;
-    stack_vector<label, 1024> definitions;
-    stack_vector<define, 1024> defines;
-    stack_vector<delayed_expression, 1024> expressions;
+    heap_vector<label> usages;
+    heap_vector<label> definitions;
+    heap_vector<define> defines;
+    heap_vector<delayed_expression> expressions;
 
     constexpr
     std::optional<uint16_t> get_symbol_definition(std::string_view name) const
@@ -317,7 +318,7 @@ struct expression_result
 };
 
 constexpr
-std::pair<std::optional<expression_result>, int> resolve_expression(const symbol_table& sym, const stack_vector<std::string_view, 512>& stk, bool& should_delay, int idx)
+std::pair<std::optional<expression_result>, int> resolve_expression(const symbol_table& sym, const heap_vector<std::string_view>& stk, bool& should_delay, int idx)
 {
     std::string_view found = stk[idx - 1];
 
@@ -492,7 +493,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
 
     static_assert(precedence.size() == left_associative.size());
 
-    stack_vector<std::string_view, 512> operator_stack;
+    heap_vector<std::string_view> operator_stack;
     expression_result res;
 
     auto get_precedence = [&](std::string_view in)
@@ -505,7 +506,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
         return left_associative[get_operator_idx(in)];
     };
 
-    stack_vector<std::string_view, 512> output_queue;
+    heap_vector<std::string_view> output_queue;
 
     while(expr.size() > 0)
     {
