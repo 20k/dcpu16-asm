@@ -4,7 +4,7 @@
 template<typename T>
 struct heap_vector
 {
-    T* svec = nullptr;
+    T* data = nullptr;
     size_t idx = 0;
     size_t current_size = 0;
 
@@ -15,9 +15,29 @@ struct heap_vector
     }
 
     constexpr
+    heap_vector(const heap_vector<T>& other)
+    {
+        idx = other.idx;
+        current_size = other.current_size;
+
+        data = new T[current_size];
+
+        for(size_t i=0; i < idx; i++)
+        {
+            data[i] = other.data[i];
+        }
+    }
+
+    constexpr
+    heap_vector<T>& operator=(const heap_vector<T>& other)
+    {
+        return *this = heap_vector<T>(other);
+    }
+
+    constexpr
     ~heap_vector()
     {
-        delete [] svec;
+        delete [] data;
     }
 
     constexpr
@@ -29,11 +49,11 @@ struct heap_vector
 
         for(size_t i=0; i < current_size; i++)
         {
-            next[i] = svec[i];
+            next[i] = data[i];
         }
 
-        delete [] svec;
-        svec = next;
+        delete [] data;
+        data = next;
 
         current_size = next_size;
     }
@@ -46,7 +66,7 @@ struct heap_vector
             upsize();
         }
 
-        svec[idx] = in;
+        data[idx] = in;
         idx++;
     }
 
@@ -63,9 +83,9 @@ struct heap_vector
             upsize();
         }
 
-        svec[idx] = T();
+        data[idx] = T();
 
-        T& val = svec[idx];
+        T& val = data[idx];
 
         idx++;
 
@@ -80,7 +100,7 @@ struct heap_vector
             assert(idx < current_size);
         }
 
-        return svec[idx];
+        return data[idx];
     }
 
     constexpr
@@ -91,7 +111,7 @@ struct heap_vector
             assert(idx < current_size);
         }
 
-        return svec[idx];
+        return data[idx];
     }
 
     constexpr
@@ -103,7 +123,7 @@ struct heap_vector
     constexpr
     auto begin()
     {
-        return svec;
+        return data;
     }
 
     constexpr
@@ -111,7 +131,7 @@ struct heap_vector
     {
         if(!std::is_constant_evaluated())
         {
-            if(svec == nullptr)
+            if(data == nullptr)
                 assert(idx == 0);
         }
 
@@ -124,10 +144,10 @@ struct heap_vector
         if(!std::is_constant_evaluated())
         {
             assert(idx > 0);
-            assert(svec);
+            assert(data);
         }
 
-        return svec[idx - 1];
+        return data[idx - 1];
     }
 
     constexpr
@@ -136,10 +156,10 @@ struct heap_vector
         if(!std::is_constant_evaluated())
         {
             assert(idx > 0);
-            assert(svec);
+            assert(data);
         }
 
-        return svec[idx - 1];
+        return data[idx - 1];
     }
 
     constexpr
