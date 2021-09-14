@@ -1,7 +1,6 @@
 #ifndef HEAP_VECTOR_HPP_INCLUDED
 #define HEAP_VECTOR_HPP_INCLUDED
 
-
 template<typename T>
 struct heap_vector
 {
@@ -16,9 +15,15 @@ struct heap_vector
     }
 
     constexpr
+    ~heap_vector()
+    {
+        delete [] svec;
+    }
+
+    constexpr
     void upsize()
     {
-        size_t next_size = current_size * 2;
+        size_t next_size = (current_size + 1) * 2;
 
         T* next = new T[next_size];
 
@@ -47,17 +52,17 @@ struct heap_vector
 
     void pop_back()
     {
-        if(current_size == idx)
-        {
-            upsize();
-        }
-
         idx--;
     }
 
     constexpr
     T& emplace_back()
     {
+        if(current_size == idx)
+        {
+            upsize();
+        }
+
         svec[idx] = T();
 
         T& val = svec[idx];
@@ -70,12 +75,22 @@ struct heap_vector
     constexpr
     T& operator[](std::size_t idx)
     {
+        if(!std::is_constant_evaluated())
+        {
+            assert(idx < current_size);
+        }
+
         return svec[idx];
     }
 
     constexpr
     const T& operator[](std::size_t idx) const
     {
+        if(!std::is_constant_evaluated())
+        {
+            assert(idx < current_size);
+        }
+
         return svec[idx];
     }
 
@@ -94,14 +109,23 @@ struct heap_vector
     constexpr
     auto end()
     {
+        if(!std::is_constant_evaluated())
+        {
+            if(svec == nullptr)
+                assert(idx == 0);
+        }
+
         return begin() + idx;
     }
 
     constexpr
     auto& back()
     {
-        if(idx == 0)
-            return svec[0];
+        if(!std::is_constant_evaluated())
+        {
+            assert(idx > 0);
+            assert(svec);
+        }
 
         return svec[idx - 1];
     }
@@ -109,8 +133,11 @@ struct heap_vector
     constexpr
     const auto& back() const
     {
-        if(idx == 0)
-            return svec[0];
+        if(!std::is_constant_evaluated())
+        {
+            assert(idx > 0);
+            assert(svec);
+        }
 
         return svec[idx - 1];
     }
