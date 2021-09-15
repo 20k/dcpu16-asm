@@ -29,6 +29,32 @@ struct heap_vector
     }
 
     constexpr
+    heap_vector(heap_vector<T>&& other)
+    {
+        data = other.data;
+        idx = other.idx;
+        current_size = other.current_size;
+
+        other.data = nullptr;
+        other.idx = 0;
+        other.current_size = 0;
+    }
+
+    constexpr
+    heap_vector<T>& operator=(heap_vector<T>&& other)
+    {
+        data = other.data;
+        idx = other.idx;
+        current_size = other.current_size;
+
+        other.data = nullptr;
+        other.idx = 0;
+        other.current_size = 0;
+
+        return *this;
+    }
+
+    constexpr
     heap_vector<T>& operator=(const heap_vector<T>& other)
     {
         return *this = heap_vector<T>(other);
