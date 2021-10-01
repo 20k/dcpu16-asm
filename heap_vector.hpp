@@ -98,6 +98,9 @@ struct heap_vector
 
     void pop_back()
     {
+        if(!std::is_constant_evaluated())
+            assert(idx != 0);
+
         idx--;
     }
 

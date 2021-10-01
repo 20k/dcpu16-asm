@@ -615,13 +615,13 @@ uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<in
             return 0x21 + val;
         else
         {
-            out = val;
+            out = std::optional<int32_t>{val};
             return 0x1f;
         }
     }
     else
     {
-        out = val;
+        out = std::optional<int32_t>{val};
         return 0x1f;
     }
 }
