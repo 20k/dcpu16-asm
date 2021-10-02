@@ -3,6 +3,7 @@
 
 #include <string_view>
 #include <cctype>
+#include <type_traits>
 
 template<typename T>
 inline
@@ -328,13 +329,13 @@ constexpr int get_binary_digit(char in)
 }
 
 inline
-constexpr uint32_t positive_stoi_cxper(std::string_view in, int radix)
+constexpr uint64_t positive_stoi_cxper(std::string_view in, int radix)
 {
     if(in.size() == 0)
         return 0;
 
-    uint32_t value = 0;
-    uint32_t base = 1;
+    uint64_t value = 0;
+    uint64_t base = 1;
 
     for(int i=(int)in.size() - 1; i >= 0; i--)
     {
@@ -374,8 +375,9 @@ constexpr uint32_t positive_stoi_cxper(std::string_view in, int radix)
     return value;
 }
 
+template<typename T>
 inline
-constexpr uint16_t get_constant(std::string_view in)
+constexpr T get_constant_of(std::string_view in)
 {
     if(in.size() == 0)
         return 0;
@@ -388,7 +390,7 @@ constexpr uint16_t get_constant(std::string_view in)
         in.remove_prefix(1);
     }
 
-    uint16_t n = 0;
+    T n = 0;
 
     if(in.starts_with("0x"))
     {
@@ -404,7 +406,7 @@ constexpr uint16_t get_constant(std::string_view in)
     }
 
     if(is_neg)
-        return -(int16_t)n;
+        return -(typename std::make_signed<T>::type)n;
     else
         return n;
 }

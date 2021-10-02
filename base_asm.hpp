@@ -261,8 +261,9 @@ constexpr int get_operator_idx(std::string_view in)
     return -1;
 }
 
+template<typename T>
 constexpr
-uint16_t exec_op(uint16_t one, uint16_t two, std::string_view op)
+T exec_op(T one, T two, std::string_view op)
 {
     if(op == "+")
         return one + two;
@@ -304,11 +305,12 @@ uint16_t exec_op(uint16_t one, uint16_t two, std::string_view op)
     return 0;
 }
 
-struct expression_result
+template<typename T>
+struct expression_result_with_width
 {
     std::optional<std::string_view> op = std::nullopt;
     std::optional<std::string_view> which_register = std::nullopt;
-    std::optional<uint16_t> word = std::nullopt;
+    std::optional<T> word = std::nullopt;
 
     constexpr
     bool fully_resolved() const
@@ -317,19 +319,50 @@ struct expression_result
     }
 };
 
+struct expression_result
+{
+    std::optional<std::string_view> op = std::nullopt;
+    std::optional<std::string_view> which_register = std::nullopt;
+    std::optional<uint16_t> word = std::nullopt;
+
+    template<typename T>
+    expression_result(const expression_result_with_width<T>& in)
+    {
+        op = in.op;
+        which_register = in.which_register;
+
+        if(in.word.has_value())
+        {
+            word = (uint16_t)in.word.value();
+        }
+    }
+
+    expression_result()
+    {
+
+    }
+
+    constexpr
+    bool fully_resolved() const
+    {
+        return word.has_value() && !which_register.has_value();
+    }
+};
+
+template<typename T>
 constexpr
-std::pair<std::optional<expression_result>, int> resolve_expression(const symbol_table& sym, const heap_vector<std::string_view>& stk, bool& should_delay, int idx)
+std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const heap_vector<std::string_view>& stk, bool& should_delay, int idx)
 {
     std::string_view found = stk[idx - 1];
 
     if(get_operator_idx(found) != -1)
     {
-        expression_result me;
+        expression_result_with_width<T> me;
         me.op = found;
         idx--;
 
-        auto [right_exp_opt, idx1] = resolve_expression(sym, stk, should_delay, idx);
-        auto [left_exp_opt, idx2] = resolve_expression(sym, stk, should_delay, idx1);
+        auto [right_exp_opt, idx1] = resolve_expression<T>(sym, stk, should_delay, idx);
+        auto [left_exp_opt, idx2] = resolve_expression<T>(sym, stk, should_delay, idx1);
 
         idx = idx2;
 
@@ -339,8 +372,8 @@ std::pair<std::optional<expression_result>, int> resolve_expression(const symbol
         if(!right_exp_opt.has_value())
             return {std::nullopt, idx};
 
-        const expression_result& left_exp = left_exp_opt.value();
-        const expression_result& right_exp = right_exp_opt.value();
+        const expression_result_with_width<T>& left_exp = left_exp_opt.value();
+        const expression_result_with_width<T>& right_exp = right_exp_opt.value();
 
         ///can't ever have two registers in an expression, even two of the same register
         if(!left_exp.fully_resolved() && !right_exp.fully_resolved())
@@ -435,14 +468,14 @@ std::pair<std::optional<expression_result>, int> resolve_expression(const symbol
     }
     else
     {
-        expression_result res;
+        expression_result_with_width<T> res;
 
         std::string_view elem = stk[idx - 1];
         idx--;
 
         if(is_constant(elem))
         {
-            res.word = get_constant(elem);
+            res.word = get_constant_of<T>(elem);
             return {res, idx};
         }
         else
@@ -494,7 +527,6 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
     static_assert(precedence.size() == left_associative.size());
 
     heap_vector<std::string_view> operator_stack;
-    expression_result res;
 
     auto get_precedence = [&](std::string_view in)
     {
@@ -595,7 +627,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    auto [found, fin_idx] = resolve_expression(sym, output_queue, should_delay, output_queue.idx);
+    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.idx);
 
     if(fin_idx > 0)
         return std::nullopt;
@@ -735,7 +767,7 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
     if(is_constant(in))
     {
-        auto val = get_constant(in);
+        auto val = get_constant_of<uint16_t>(in);
 
         return decode_pack_constant(val, apos, out);
     }
@@ -893,7 +925,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
             return err;
         }
 
-        uint16_t val = get_constant(label_value);
+        uint16_t val = get_constant_of<uint16_t>(label_value);
 
         define d;
         d.name = label_name;
@@ -914,7 +946,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
             if(is_constant(value))
             {
-                out.push_back(get_constant(value));
+                out.push_back(get_constant_of<uint16_t>(value));
             }
             else if(is_label_reference(value))
             {
