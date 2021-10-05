@@ -1486,7 +1486,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
             if(delayed.type == arg_pos::B)
             {
-                mem = mem & 0x1111110000011111;
+                mem = mem & 0b1111110000011111;
                 mem = mem | (offset << 5);
             }
         }
@@ -1523,7 +1523,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
                 if(delayed.type == arg_pos::B)
                 {
-                    mem = mem & 0x1111110000011111;
+                    mem = mem & 0b1111110000011111;
                     mem = mem | (offset << 5);
                 }
             }
