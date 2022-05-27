@@ -96,6 +96,7 @@ struct heap_vector
         idx++;
     }
 
+    constexpr
     void pop_back()
     {
         if(!std::is_constant_evaluated())
