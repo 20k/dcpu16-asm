@@ -326,6 +326,7 @@ struct expression_result
     std::optional<uint16_t> word = std::nullopt;
 
     template<typename T>
+    constexpr
     expression_result(const expression_result_with_width<T>& in)
     {
         op = in.op;
@@ -337,6 +338,7 @@ struct expression_result
         }
     }
 
+    constexpr
     expression_result()
     {
 
