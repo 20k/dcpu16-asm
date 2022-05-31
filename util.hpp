@@ -59,7 +59,7 @@ constexpr std::string_view consume_next(std::string_view& in, bool is_space_deli
 
         if(!in_comment)
         {
-            if(cchar == ' ' || cchar == '\n' || cchar == '\t')
+            if(cchar == ' ' || cchar == '\n' || cchar == '\t' || cchar == '\r')
                 continue;
         }
         else
@@ -137,12 +137,12 @@ constexpr std::string_view consume_next(std::string_view& in, bool is_space_deli
 
         if(is_space_delimited)
         {
-            if(cchar == '\n' || cchar == ',' || cchar == ';' || cchar == ' ' || cchar == '\t')
+            if(cchar == '\n' || cchar == ',' || cchar == ';' || cchar == ' ' || cchar == '\t' || cchar == '\r')
                 break;
         }
         else
         {
-            if(cchar == '\n' || cchar == ',' || cchar == ';')
+            if(cchar == '\n' || cchar == ',' || cchar == ';' || cchar == '\r')
                 break;
         }
     }
@@ -156,7 +156,7 @@ constexpr std::string_view consume_next(std::string_view& in, bool is_space_deli
     data.remove_suffix(data.size() - word_end);
     suffix.remove_prefix(word_end);
 
-    while(data.size() > 0 && (data.back() == ' ' || data.back() == '\t'))
+    while(data.size() > 0 && (data.back() == ' ' || data.back() == '\t' || data.back() == '\r'))
     {
         data.remove_suffix(1);
     }
