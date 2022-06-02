@@ -2,6 +2,7 @@
 #define STACK_VECTOR_HPP_INCLUDED
 
 #include <array>
+#include <span>
 
 template<typename T, int N>
 struct stack_vector
@@ -92,6 +93,12 @@ struct stack_vector
     void clear()
     {
         idx = 0;
+    }
+
+    constexpr
+    std::span<T> as_span()
+    {
+        return std::span<T>{begin(), end()};
     }
 };
 
