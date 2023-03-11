@@ -17,6 +17,11 @@
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
 
+struct assembler_settings
+{
+    bool no_packed_constants = false;
+};
+
 constexpr
 bool should_prune(char c)
 {
@@ -638,8 +643,14 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
 }
 
 constexpr
-uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<int32_t>& out)
+uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<int32_t>& out, assembler_settings& sett)
 {
+    if(sett.no_packed_constants)
+    {
+        out = std::optional<int32_t>{val};
+        return 0x1f;
+    }
+
     if(apos == arg_pos::A)
     {
         if(val == 0xFFFF)
@@ -666,7 +677,7 @@ uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<in
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, std::optional<std::string_view>& is_expression, symbol_table& sym)
+constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, std::optional<std::string_view>& is_expression, symbol_table& sym, assembler_settings& sett)
 {
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
@@ -771,7 +782,7 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
     {
         auto val = get_constant_of<uint16_t>(in);
 
-        return decode_pack_constant(val, apos, out);
+        return decode_pack_constant(val, apos, out, sett);
     }
 
     if(is_label_reference(in))
@@ -779,7 +790,7 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         auto test_val_opt = sym.get_symbol_definition(in);
 
         if(test_val_opt.has_value())
-            return decode_pack_constant(test_val_opt.value(), apos, out);
+            return decode_pack_constant(test_val_opt.value(), apos, out, sett);
 
         out = 0;
         is_label = in;
@@ -797,7 +808,7 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
             return std::nullopt;
 
         if(eres.word.has_value())
-            return decode_pack_constant(eres.word.value(), apos, out);
+            return decode_pack_constant(eres.word.value(), apos, out, sett);
 
         if(eres.which_register.has_value())
         {
@@ -827,7 +838,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line)
+std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line, assembler_settings& sett)
 {
     error_info err;
 
@@ -1091,12 +1102,12 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                 std::optional<int32_t> extra_b;
                 std::optional<std::string_view> is_label_b;
                 std::optional<std::string_view> is_expression_b;
-                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, is_expression_b, sym);
+                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, is_expression_b, sym, sett);
 
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
                 std::optional<std::string_view> is_expression_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym);
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym, sett);
 
                 if(!compiled_b.has_value())
                 {
@@ -1194,7 +1205,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                 std::optional<int32_t> extra_a;
                 std::optional<std::string_view> is_label_a;
                 std::optional<std::string_view> is_expression_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym);
+                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym, sett);
 
                 if(!compiled_a.has_value())
                 {
@@ -1261,7 +1272,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 }
 
 constexpr
-std::pair<std::optional<return_info>, error_info> assemble(std::string_view text)
+std::pair<std::optional<return_info>, error_info> assemble(std::string_view text, assembler_settings sett = assembler_settings())
 {
     return_info rinfo;
     symbol_table sym;
@@ -1291,7 +1302,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
         size_t token_offset = 0;
 
-        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line);
+        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line, sett);
 
         uint16_t source_character = offset + token_offset;
 
