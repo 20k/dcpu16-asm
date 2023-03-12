@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
 
     if(argc <= 1)
     {
-        printf("Usage: dcpu-16-asm.exe ./source [./out] [-fselftest]");
+        printf("Usage: dcpu16-asm.exe ./source [./out] [-fselftest]");
         return 0;
     }
 
