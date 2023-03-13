@@ -12,7 +12,7 @@
 #include <iostream>
 #include <cmath>
 #include <assert.h>
-#include "heap_vector.hpp"
+#include <vector>
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -120,10 +120,10 @@ struct delayed_expression
 
 struct symbol_table
 {
-    heap_vector<label> usages;
-    heap_vector<label> definitions;
-    heap_vector<define> defines;
-    heap_vector<delayed_expression> expressions;
+    std::vector<label> usages;
+    std::vector<label> definitions;
+    std::vector<define> defines;
+    std::vector<delayed_expression> expressions;
 
     constexpr
     std::optional<uint16_t> get_symbol_definition(std::string_view name) const
@@ -358,7 +358,7 @@ struct expression_result
 
 template<typename T>
 constexpr
-std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const heap_vector<std::string_view>& stk, bool& should_delay, int idx)
+std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const std::vector<std::string_view>& stk, bool& should_delay, int idx)
 {
     std::string_view found = stk[idx - 1];
 
@@ -533,7 +533,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
 
     static_assert(precedence.size() == left_associative.size());
 
-    heap_vector<std::string_view> operator_stack;
+    std::vector<std::string_view> operator_stack;
 
     auto get_precedence = [&](std::string_view in)
     {
@@ -545,7 +545,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
         return left_associative[get_operator_idx(in)];
     };
 
-    heap_vector<std::string_view> output_queue;
+    std::vector<std::string_view> output_queue;
 
     while(expr.size() > 0)
     {
@@ -634,7 +634,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.idx);
+    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.size());
 
     if(fin_idx > 0)
         return std::nullopt;
