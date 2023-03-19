@@ -24,6 +24,7 @@ struct stack_vector
         idx++;
     }
 
+    constexpr
     void pop_back()
     {
         idx--;
@@ -87,6 +88,18 @@ struct stack_vector
             return svec[0];
 
         return svec[idx - 1];
+    }
+
+    constexpr
+    auto data()
+    {
+        return &svec[0];
+    }
+
+    constexpr
+    const auto data() const
+    {
+        return &svec[0];
     }
 
     constexpr
