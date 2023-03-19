@@ -686,38 +686,58 @@ uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<in
     }
 }
 
+struct decode_result
+{
+    uint32_t val = 0;
+    std::optional<int32_t> extra_word;
+    std::optional<std::string_view> label;
+    std::optional<std::string_view> expression;
+    bool is_address = false;
+};
+
 // so
 // create a table of MAX_WHATEVER long which contains byte -> label mapping
 // then figure out a way to sub label pc value back in to instructions
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, std::optional<std::string_view>& is_expression, symbol_table& sym, assembler_settings& sett)
+constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos::type apos, symbol_table& sym, assembler_settings& sett)
 {
+    decode_result res;
+
+    auto set_val = [&](uint32_t val)
+    {
+        res.val = val;
+
+        return res;
+    };
+
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
 
         ///cannot return reg_opt, because otherwise it isn't constexpr due to optional lacking constexpr move
         if(reg_opt.has_value())
-            return reg_opt.value();
+            return set_val(reg_opt.value());
     }
 
     if(is_address(in))
     {
+        res.is_address = true;
+
         auto extracted = extract_address_contents(in);
 
         auto extracted_reg_opt = get_register_assembly_value_from_name(extracted);
 
         if(extracted_reg_opt.has_value())
         {
-            return 0x08 + extracted_reg_opt.value();
+            return set_val(0x08 + extracted_reg_opt.value());
         }
 
         if(iequal(extracted, "--sp") || iequal(extracted, "sp++"))
-            return 0x18;
+            return set_val(0x18);
 
         if(iequal(extracted, "sp"))
-            return 0x19;
+            return set_val(0x19);
 
         bool should_delay = false;
         auto expression_opt = parse_expression(sym, extracted, should_delay);
@@ -728,8 +748,8 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
             if(eres.fully_resolved())
             {
-                out = eres.word.value();
-                return 0x1e;
+                res.extra_word = eres.word.value();
+                return set_val(0x1e);
             }
 
             if(eres.which_register.has_value())
@@ -743,28 +763,28 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
                 {
                     if(iequal(reg, "sp"))
                     {
-                        out = eres.word.value();
-                        return 0x1a;
+                        res.extra_word = eres.word.value();
+                        return set_val(0x1a);
                     }
 
                     auto reg_val_opt = get_register_assembly_value_from_name(reg);
 
                     if(reg_val_opt.has_value())
                     {
-                        out = eres.word.value();
-                        return 0x10 + reg_val_opt.value();
+                        res.extra_word = eres.word.value();
+                        return set_val(0x10 + reg_val_opt.value());
                     }
                 }
                 else
                 {
                     if(iequal(reg, "sp"))
-                        return 0x19;
+                        return set_val(0x19);
 
                     auto reg_val_opt = get_register_assembly_value_from_name(reg);
 
                     if(reg_val_opt.has_value())
                     {
-                        return 0x08 + reg_val_opt.value();
+                        return set_val(0x08 + reg_val_opt.value());
                     }
                 }
             }
@@ -772,32 +792,32 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
         if(should_delay)
         {
-            out = 0;
-            is_expression = extracted;
-            return 0x10; // placeholder
+            res.extra_word = 0;
+            res.expression = extracted;
+            return set_val(0x10); // placeholder
         }
     }
 
     if(iequal(in, "push") || iequal(in, "pop"))
-        return 0x18;
+        return set_val(0x18);
 
     if(iequal(in, "peek"))
-        return 0x19;
+        return set_val(0x19);
 
     if(iequal(in, "sp"))
-        return 0x1b;
+        return set_val(0x1b);
 
     if(iequal(in, "pc"))
-        return 0x1c;
+        return set_val(0x1c);
 
     if(iequal(in, "ex"))
-        return 0x1d;
+        return set_val(0x1d);
 
     if(is_constant(in))
     {
         auto val = get_constant_of<uint16_t>(in);
 
-        return decode_pack_constant(val, apos, out, sett);
+        return set_val(decode_pack_constant(val, apos, res.extra_word, sett));
     }
 
     if(is_label_reference(in))
@@ -805,11 +825,11 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
         auto test_val_opt = sym.get_symbol_definition(in);
 
         if(test_val_opt.has_value())
-            return decode_pack_constant(test_val_opt.value(), apos, out, sett);
+            return set_val(decode_pack_constant(test_val_opt.value(), apos, res.extra_word, sett));
 
-        out = 0;
-        is_label = in;
-        return 0x1f;
+        res.extra_word = 0;
+        res.label = in;
+        return set_val(0x1f);
     }
 
     bool should_delay = false;
@@ -823,22 +843,22 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
             return std::nullopt;
 
         if(eres.word.has_value())
-            return decode_pack_constant(eres.word.value(), apos, out, sett);
+            return set_val(decode_pack_constant(eres.word.value(), apos, res.extra_word, sett));
 
         if(eres.which_register.has_value())
         {
             auto decoded = get_register_immediate_encoding(eres.which_register.value());
 
             if(decoded.has_value())
-                return decoded;
+                return set_val(decoded.value());
         }
     }
 
     if(should_delay)
     {
-        out = 0;
-        is_expression = in;
-        return 0x1f; // next word (placeholder)
+        res.extra_word = 0;
+        res.expression = in;
+        return set_val(0x1f); // next word (placeholder)
     }
 
     return std::nullopt;
@@ -1114,37 +1134,33 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 auto val_a = consume_next(in, false);
 
-                std::optional<int32_t> extra_b;
-                std::optional<std::string_view> is_label_b;
-                std::optional<std::string_view> is_expression_b;
-                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, is_expression_b, sym, sett);
+                auto decoded_b_opt = decode_value(val_b, arg_pos::B, sym, sett);
+                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett);
 
-                std::optional<int32_t> extra_a;
-                std::optional<std::string_view> is_label_a;
-                std::optional<std::string_view> is_expression_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym, sett);
-
-                if(!compiled_b.has_value())
+                if(!decoded_b_opt.has_value())
                 {
                     err.msg = "first argument failed to decode";
                     return err;
                 }
 
-                if(!compiled_a.has_value())
+                if(!decoded_a_opt.has_value())
                 {
                     err.msg = "second argument failed to decode";
                     return err;
                 }
 
-                auto instr = construct_type_a(code, compiled_a.value(), compiled_b.value());
+                auto decoded_b = decoded_b_opt.value();
+                auto decoded_a = decoded_a_opt.value();
+
+                auto instr = construct_type_a(code, decoded_a.val, decoded_b.val);
 
                 uint16_t instruction_word = out.size();
 
                 out.push_back(instr);
 
-                if(extra_a.has_value())
+                if(decoded_a.extra_word.has_value())
                 {
-                    uint32_t promote_a = extra_a.value();
+                    uint32_t promote_a = decoded_a.extra_word.value();
 
                     if(promote_a >= 65536)
                     {
@@ -1152,23 +1168,23 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         return err;
                     }
 
-                    if(is_label_a.has_value())
+                    if(decoded_a.label.has_value())
                     {
                         label l;
-                        l.name = is_label_a.value();
+                        l.name = decoded_a.label.value();
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
                     }
 
-                    if(is_expression_a.has_value())
+                    if(decoded_a.expression.has_value())
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
                         delayed.extra_word = out.size();
-                        delayed.expression = is_expression_a.value();
+                        delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
-                        delayed.is_memory_reference = is_address(val_a);
+                        delayed.is_memory_reference = decoded_a.is_address;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1176,9 +1192,9 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     out.push_back(promote_a);
                 }
 
-                if(extra_b.has_value())
+                if(decoded_b.extra_word.has_value())
                 {
-                    uint32_t promote_b = extra_b.value();
+                    uint32_t promote_b = decoded_b.extra_word.value();
 
                     if(promote_b >= 65536)
                     {
@@ -1186,23 +1202,23 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         return err;
                     }
 
-                    if(is_label_b.has_value())
+                    if(decoded_b.label.has_value())
                     {
                         label l;
-                        l.name = is_label_b.value();
+                        l.name = decoded_b.label.value();
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
                     }
 
-                    if(is_expression_b.has_value())
+                    if(decoded_b.expression.has_value())
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
                         delayed.extra_word = out.size();
-                        delayed.expression = is_expression_b.value();
+                        delayed.expression = decoded_b.expression.value();
                         delayed.type = arg_pos::B;
-                        delayed.is_memory_reference = is_address(val_b);
+                        delayed.is_memory_reference = decoded_b.is_address;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1217,26 +1233,25 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
             {
                 auto val_a = consume_next(in, false);
 
-                std::optional<int32_t> extra_a;
-                std::optional<std::string_view> is_label_a;
-                std::optional<std::string_view> is_expression_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym, sett);
+                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett);
 
-                if(!compiled_a.has_value())
+                if(!decoded_a_opt.has_value())
                 {
                     err.msg = "first argument failed to decode";
                     return err;
                 }
 
-                auto instr = construct_type_b(code, compiled_a.value());
+                auto decoded_a = decoded_a_opt.value();
+
+                auto instr = construct_type_b(code, decoded_a.val);
 
                 uint16_t instruction_word = out.size();
 
                 out.push_back(instr);
 
-                if(extra_a.has_value())
+                if(decoded_a.extra_word.has_value())
                 {
-                    uint32_t promote_a = extra_a.value();
+                    uint32_t promote_a = decoded_a.extra_word.value();
 
                     if(promote_a >= 65536)
                     {
@@ -1244,23 +1259,23 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         return err;
                     }
 
-                    if(is_label_a.has_value())
+                    if(decoded_a.label.has_value())
                     {
                         label l;
-                        l.name = is_label_a.value();
+                        l.name = decoded_a.label.value();
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
                     }
 
-                    if(is_expression_a.has_value())
+                    if(decoded_a.expression.has_value())
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
                         delayed.extra_word = out.size();
-                        delayed.expression = is_expression_a.value();
+                        delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
-                        delayed.is_memory_reference = is_address(val_a);
+                        delayed.is_memory_reference = decoded_a.is_address;
 
                         sym.expressions.push_back(delayed);
                     }
