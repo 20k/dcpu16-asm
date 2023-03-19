@@ -233,6 +233,11 @@ constexpr bool is_binary_digit(char in)
     return in == '0' || in == '1';
 }
 
+constexpr bool is_valid_string_delimiter(char c)
+{
+    return c == '\'' || c == '\"';
+}
+
 constexpr bool is_string(std::string_view in)
 {
     if(in.size() < 2)
@@ -240,7 +245,7 @@ constexpr bool is_string(std::string_view in)
 
     char first = in[0];
 
-    return (first == '\'' || first == '\"') && in.back() == first;
+    return is_valid_string_delimiter(first) && in.back() == first;
 }
 
 constexpr bool is_constant(std::string_view in)

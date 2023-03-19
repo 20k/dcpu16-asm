@@ -151,6 +151,21 @@ constexpr std::optional<std::string_view> consume_expression_token(std::string_v
     if(in.size() == 0)
         return "";
 
+    if(in.size() >= 3)
+    {
+        char start_tok = in[0];
+        char end_tok = in[2];
+
+        if(start_tok == end_tok && is_valid_string_delimiter(start_tok))
+        {
+            std::string_view data(in.begin(), in.begin() + 3);
+
+            in.remove_prefix(3);
+
+            return data;
+        }
+    }
+
     if(in.starts_with("0x"))
     {
         int fin = 2;
