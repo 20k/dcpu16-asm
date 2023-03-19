@@ -13,6 +13,7 @@
 #include <cmath>
 #include <assert.h>
 #include <vector>
+#include <variant>
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
@@ -20,6 +21,7 @@
 struct assembler_settings
 {
     bool no_packed_constants = false;
+    bool allow_multiregister_expressions = true; //eg set A, [B + C + 1234]
 };
 
 constexpr
@@ -325,7 +327,7 @@ T exec_op(T one, T two, std::string_view op)
     return 0;
 }
 
-template<typename T>
+/*template<typename T>
 struct expression_result_with_width
 {
     std::optional<std::string_view> op = std::nullopt;
@@ -337,7 +339,219 @@ struct expression_result_with_width
     {
         return word.has_value() && !which_register.has_value();
     }
+};*/
+
+template<typename T>
+struct expression_leaf
+{
+    constexpr
+    bool is_val() const
+    {
+        return std::holds_alternative<T>(val_or_reg);
+    }
+
+    constexpr
+    bool is_reg() const
+    {
+        return std::holds_alternative<std::string_view>(val_or_reg);
+    }
+
+    std::variant<T, std::string_view> val_or_reg;
+
+    constexpr
+    T get_val() const
+    {
+        return std::get<0>(val_or_reg);
+    }
+
+    constexpr
+    std::string_view get_reg() const
+    {
+        return std::get<1>(val_or_reg);
+    }
+
+    template<typename U>
+    constexpr
+    expression_leaf(U&& in) : val_or_reg(std::forward<U>(in))
+    {
+
+    }
 };
+
+template<typename T>
+struct expression_node;
+
+template<typename T>
+struct expression_op
+{
+    std::string_view op;
+    std::vector<expression_node<T>> args;
+
+    constexpr
+    bool partially_concrete() const
+    {
+        for(auto i : args)
+        {
+            if(i.is_concrete_leaf())
+                return true;
+        }
+
+        return false;
+    }
+
+    constexpr
+    std::pair<std::vector<expression_leaf<T>>, std::vector<expression_node<T>> get_concrete_split() const
+    {
+        std::vector<expression_leaf<T>> leaf;
+        std::vector<expression_node<T>> other;
+
+        for(auto i : args)
+        {
+            if(i.is_concrete_leaf())
+            {
+                leaf.push_back(i);
+            }
+            else
+            {
+                other.push_back(i);
+            }
+        }
+
+        return {leaf, other};
+    }
+
+};
+
+template<typename T>
+struct expression_node
+{
+    constexpr
+    bool is_op() const
+    {
+        return std::holds_alternative<expression_op<T>>(node);
+    }
+
+    constexpr
+    bool is_leaf() const
+    {
+        return std::holds_alternative<expression_leaf<T>>(node);
+    }
+
+    constexpr
+    bool is_concrete_leaf() const
+    {
+        return is_leaf() && std::get<expression_leaf<T>>(node).is_val();
+    }
+
+    template<typename U>
+    constexpr
+    expression_node(U&& op) : node(std::forward<U>(op))
+    {
+    }
+
+    std::variant<expression_op<T>, expression_leaf<T>> node;
+};
+
+template<typename T>
+constexpr
+std::pair<std::vector<T>
+
+template<typename T>
+constexpr
+expression_node<T> resolve_expression(const expression_op<T>& op)
+{
+    if(op.args.size() != 2)
+        return op;
+
+    /*for(auto v : op.args)
+    {
+        if(!v.is_val())
+            return op;
+    }*/
+
+    const expression_node<T>& left = op.args[0];
+    const expression_node<T>& right = op.args[1];
+
+    if(left.is_concrete_leaf() && right.is_concrete_leaf())
+    {
+        T arg1 = std::get<T>(op.args[0].val_or_reg);
+        T arg2 = std::get<T>(op.args[1].val_or_reg);
+
+        T result = exec_op(arg1, arg2, op.op);
+
+        expression_leaf<T> leaf(result);
+
+        return leaf;
+    }
+
+    /*if(left.is_op() && right.is_concrete_leaf())
+    {
+        ///so, we have the expression (r1 + 2) + 3
+        const expression_op<T>& left_op = std::get<expression_op<T>>(left.node);
+
+        if(left_op == "+" && left_op.partially_concrete() && op.op == "+")
+        {
+            auto [conc, other] = left.get_concrete_split();
+            auto [conc2, other2] = op.get_concrete_split();
+
+            T exec = 0;
+
+            for(auto i : conc)
+            {
+                exec = exec_op(exec, i.get_val(), "+");
+            }
+
+            for(auto i : conc2)
+            {
+                exec = exec_op(exec, i.get_val(), "+");
+            }
+        }
+    }*/
+
+    /*{
+        std::vector<T> concrete;
+        std::vector<expression_node<T>> other;
+
+        auto add_chain = [&](const expression_node<T>& in)
+        {
+            if(in.is_op())
+            {
+                const expression_op<T>& in_op = std::get<expression_op<T>>(in.node);
+
+                if(in_op.op == "+" && in_op.partially_concrete()
+                {
+                    auto [c, o] = in_op.get_concrete_split();
+
+                    for(auto i : c)
+                    {
+                        concrete.push_back(i);
+                    }
+
+                    for(auto i : o)
+                    {
+                        other.push_back(o);
+                    }
+                }
+                else
+                {
+                    other.push_back()
+                }
+            }
+            else if(in.is_concrete_leaf())
+            {
+                concrete.push_back(std::get<expression_leaf<T>>(in.node).get_val());
+            }
+            else
+            {
+
+            }
+        };
+
+    }*/
+
+
+    return op;
+}
 
 struct expression_result
 {
@@ -347,14 +561,36 @@ struct expression_result
 
     template<typename T>
     constexpr
-    expression_result(const expression_result_with_width<T>& in)
+    expression_result(const expression_node<T>& in)
     {
-        op = in.op;
-        which_register = in.which_register;
-
-        if(in.word.has_value())
+        auto import_leaf = [&](expression_leaf<T>& leaf)
         {
-            word = (uint16_t)in.word.value();
+            if(leaf.is_reg())
+            {
+                which_register = leaf.get_reg();
+            }
+
+            if(leaf.is_val())
+            {
+                word = (uint16_t)leaf.get_val();
+            }
+        };
+
+        if(in.is_leaf())
+        {
+            expression_leaf<T>& leaf = std::get<expression_leaf<T>>(in.node);
+
+            import_leaf(leaf);
+        }
+
+        if(in.is_op())
+        {
+            expression_op<T>& eop = std::get<expression_op<T>>(in.node);
+
+            op = eop.op;
+
+            import_leaf(std::get<expression_leaf<T>>(eop.args.at(0)));
+            import_leaf(std::get<expression_leaf<T>>(eop.args.at(1)));
         }
     }
 
@@ -373,14 +609,14 @@ struct expression_result
 
 template<typename T>
 constexpr
-std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const std::vector<std::string_view>& stk, bool& should_delay, int idx)
+std::pair<std::optional<expression_node<T>>, int> resolve_expression(const symbol_table& sym, const std::vector<std::string_view>& stk, bool& should_delay, int idx)
 {
     std::string_view found = stk[idx - 1];
 
     if(get_operator_idx(found) != -1)
     {
-        expression_result_with_width<T> me;
-        me.op = found;
+        expression_op<T> op;
+        op.op = found;
         idx--;
 
         auto [right_exp_opt, idx1] = resolve_expression<T>(sym, stk, should_delay, idx);
@@ -394,7 +630,17 @@ std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expressio
         if(!right_exp_opt.has_value())
             return {std::nullopt, idx};
 
-        const expression_result_with_width<T>& left_exp = left_exp_opt.value();
+        const expression_node<T>& left_exp = left_exp_opt.value();
+        const expression_node<T>& right_exp = right_exp_opt.value();
+
+        op.args.push_back(left_exp);
+        op.args.push_back(right_exp);
+
+        expression_node<T> me = resolve_expression(expr);
+
+        return {me, idx};
+
+        /*const expression_result_with_width<T>& left_exp = left_exp_opt.value();
         const expression_result_with_width<T>& right_exp = right_exp_opt.value();
 
         ///can't ever have two registers in an expression, even two of the same register
@@ -484,44 +730,38 @@ std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expressio
             {
                 return {std::nullopt, idx};
             }
-        }
+        }*/
 
-        return {std::nullopt, idx};
+        //return {std::nullopt, idx};
     }
     else
     {
-        expression_result_with_width<T> res;
-
         std::string_view elem = stk[idx - 1];
         idx--;
 
         if(is_constant(elem))
         {
-            res.word = get_constant_of<T>(elem);
-            return {res, idx};
+            expression_leaf<T> leaf(get_constant_of<T>(elem));
+
+            return {leaf, idx};
         }
         else
         {
-            if(get_register_assembly_value_from_name(elem).has_value())
+            ///even though I can't do anything with the other registers, do please parse them as registers
+            if(get_register_immediate_encoding(elem).has_value())
             {
-                res.which_register = elem;
+                expression_leaf<T> leaf(elem);
 
-                return {res, idx};
-            }
-
-            if(iequal(elem, "sp"))
-            {
-                ///the sp register
-                res.which_register = elem;
-                return {res, idx};
+                return {leaf, idx};
             }
 
             auto val_opt = sym.get_symbol_definition(elem);
 
             if(val_opt.has_value())
             {
-                res.word = val_opt.value();
-                return {res, idx};
+                expression_leaf<T> leaf(val_opt.value());
+
+                return {leaf, idx};
             }
 
             if(is_label_reference(elem))
