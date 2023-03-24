@@ -22,6 +22,7 @@ struct assembler_settings
     bool no_packed_constants = false;
     uint16_t location = 0;
     std::vector<std::string> label_values_to_extract;
+    std::vector<std::pair<uint16_t, std::string_view>> provided_symbol_definitions;
 };
 
 constexpr
@@ -1298,6 +1299,16 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
     return_info rinfo;
     symbol_table sym;
     sym.base_offset = sett.location;
+
+    ///these are deliberately not affected by relocations
+    for(auto [absolute_value, name] : sett.provided_symbol_definitions)
+    {
+        define d;
+        d.name = name;
+        d.value = absolute_value;
+
+        sym.defines.push_back(d);
+    }
 
     stack_vector<uint16_t, MEM_SIZE> source_to_line;
 
