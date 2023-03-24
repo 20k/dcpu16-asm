@@ -21,6 +21,7 @@ struct assembler_settings
 {
     bool no_packed_constants = false;
     uint16_t location = 0;
+    std::vector<std::string> label_values_to_extract;
 };
 
 constexpr
@@ -1580,6 +1581,16 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         for(uint16_t& val : rinfo.source_line_to_pc)
         {
             val += sett.location;
+        }
+    }
+
+    for(std::string_view l : sett.label_values_to_extract)
+    {
+        auto val_opt = sym.get_symbol_definition(l);
+
+        if(val_opt.has_value())
+        {
+            rinfo.requested_label_names.push_back({val_opt.value(), std::string(l)});
         }
     }
 

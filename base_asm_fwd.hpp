@@ -6,6 +6,7 @@
 #include <string_view>
 #include "stack_vector.hpp"
 #include <stdint.h>
+#include <vector>
 
 #define MEM_SIZE 0x10000
 
@@ -26,6 +27,8 @@ struct return_info
     stack_vector<uint16_t, MEM_SIZE> pc_to_source_line;
     ///input line to memory cell
     stack_vector<uint16_t, MEM_SIZE> source_line_to_pc;
+
+    std::vector<std::pair<uint16_t, std::string>> requested_label_names;
 
     constexpr return_info(){}
 };
