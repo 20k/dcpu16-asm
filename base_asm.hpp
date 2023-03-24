@@ -1628,9 +1628,9 @@ std::optional<error_info> resolve_delayed_expressions(T& mem, const std::vector<
     return std::nullopt;
 }
 
-
+template<template<typename> typename T, typename U>
 constexpr
-std::pair<std::optional<return_info>, error_info> assemble_multiple(std::span<std::string_view> text, assembler_settings sett = assembler_settings())
+std::pair<std::optional<return_info>, error_info> assemble_multiple(const T<U>& texts, assembler_settings sett = assembler_settings())
 {
     sett.allow_unresolved_symbols = true;
 
@@ -1639,7 +1639,7 @@ std::pair<std::optional<return_info>, error_info> assemble_multiple(std::span<st
     std::vector<delayed_expression> all_delayed;
     std::vector<std::pair<uint16_t, std::string>> all_exported;
 
-    for(std::string_view val : text)
+    for(const U& val : texts)
     {
         sett.location = combined.mem.size();
         auto [result, err] = assemble(val, sett);
