@@ -1409,46 +1409,6 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         }
     }*/
 
-    /*if(sym.definitions.size() > 0 && sym.usages.size() > 0)
-    {
-        if(!std::is_constant_evaluated())
-        {
-            std::sort(sym.definitions.begin(), sym.definitions.end(), [](const label& l1, const label& l2) constexpr {return l1.name < l2.name;});
-            std::sort(sym.usages.begin(), sym.usages.end(), [](const label& l1, const label& l2) constexpr {return l1.name < l2.name;});
-        }
-        else
-        {
-
-        }
-    }*/
-
-    for(label& j : sym.usages)
-    {
-        bool found = false;
-
-        for(label& i : sym.definitions)
-        {
-            if(j.name != i.name)
-                continue;
-
-            rinfo.mem.svec[j.offset] = i.offset;
-
-            found = true;
-            break;
-        }
-
-        if(!found)
-        {
-            error_info err;
-            err.msg = "Label used with no definition";
-            err.character = 0;
-            err.line = rinfo.pc_to_source_line[j.offset];
-            err.name_in_source = j.name;
-
-            return {std::nullopt, err};
-        }
-    }
-
     for(delayed_expression& delayed : sym.expressions)
     {
         bool should_delay = false;
