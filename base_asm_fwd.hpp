@@ -28,7 +28,7 @@ struct return_info
     ///input line to memory cell
     stack_vector<uint16_t, MEM_SIZE> source_line_to_pc;
 
-    std::vector<std::pair<uint16_t, std::string>> requested_label_names;
+    std::vector<std::pair<uint16_t, std::string>> exported_label_names;
 
     constexpr return_info(){}
 };

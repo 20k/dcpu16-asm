@@ -127,6 +127,7 @@ struct symbol_table
     std::vector<label> definitions;
     std::vector<define> defines;
     std::vector<delayed_expression> expressions;
+    std::vector<std::string_view> exports;
     uint16_t base_offset = 0;
 
     constexpr
@@ -976,6 +977,15 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         return std::nullopt;
     }
 
+    if(iequal(".export", consumed_name) || iequal("export", consumed_name))
+    {
+        auto to_export = consume_next(in, true);
+
+        sym.exports.push_back(to_export);
+
+        return std::nullopt;
+    }
+
     if(iequal(".dat", consumed_name) || iequal("dat", consumed_name))
     {
         bool looping = true;
@@ -1561,7 +1571,17 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
         if(val_opt.has_value())
         {
-            rinfo.requested_label_names.push_back({val_opt.value(), std::string(l)});
+            rinfo.exported_label_names.push_back({val_opt.value(), std::string(l)});
+        }
+    }
+
+    for(std::string_view l : sym.exports)
+    {
+        auto val_opt = sym.get_symbol_definition(l);
+
+        if(val_opt.has_value())
+        {
+            rinfo.exported_label_names.push_back({val_opt.value(), std::string(l)});
         }
     }
 
