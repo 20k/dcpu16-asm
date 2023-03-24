@@ -1628,4 +1628,29 @@ std::optional<error_info> resolve_delayed_expressions(T& mem, const std::vector<
     return std::nullopt;
 }
 
+
+constexpr
+std::pair<std::optional<return_info>, error_info> assemble_multiple(std::span<std::string_view> text, assembler_settings sett = assembler_settings())
+{
+    sett.allow_unresolved_symbols = true;
+
+    return_info combined;
+
+    for(std::string_view val : text)
+    {
+        sett.location = combined.mem.size();
+        auto [result, err] = assemble(val, sett);
+
+        if(!result.has_value())
+            return {std::nullopt, err};
+
+        for(uint16_t i : result.value().mem)
+        {
+            combined.mem.push_back(i);
+        }
+    }
+
+    return {combined, {}};
+}
+
 #endif // BASE_ASM_HPP_INCLUDED
