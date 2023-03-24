@@ -1636,6 +1636,9 @@ std::pair<std::optional<return_info>, error_info> assemble_multiple(std::span<st
 
     return_info combined;
 
+    std::vector<delayed_expression> all_delayed;
+    std::vector<std::pair<uint16_t, std::string>> all_exported;
+
     for(std::string_view val : text)
     {
         sett.location = combined.mem.size();
@@ -1648,7 +1651,25 @@ std::pair<std::optional<return_info>, error_info> assemble_multiple(std::span<st
         {
             combined.mem.push_back(i);
         }
+
+        ///offset by however long the initial program was so we patch the correct byte
+        for(delayed_expression delay : result.value().unresolved_expressions)
+        {
+            delay.base_word += sett.location;
+
+            all_delayed.push_back(delay);
+        }
+
+        for(auto i : result.value().exported_label_names)
+        {
+            all_exported.push_back(i);
+        }
     }
+
+    auto err_opt = resolve_delayed_expressions(combined.mem, all_exported, all_delayed);
+
+    if(err_opt.has_value())
+        return {std::nullopt, err_opt.value()};
 
     return {combined, {}};
 }
