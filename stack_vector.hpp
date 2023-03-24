@@ -113,6 +113,17 @@ struct stack_vector
     {
         return std::span<T>{begin(), end()};
     }
+
+    constexpr
+    void shift_contents_right(size_t amount)
+    {
+        if(idx + amount >= max_size)
+            return;
+
+        std::copy_backward(begin(), end(), begin() + idx + amount);
+
+        idx += amount;
+    }
 };
 
 #endif // STACK_VECTOR_HPP_INCLUDED

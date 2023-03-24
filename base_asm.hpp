@@ -20,6 +20,7 @@
 struct assembler_settings
 {
     bool no_packed_constants = false;
+    uint16_t location = 0;
 };
 
 constexpr
@@ -124,6 +125,7 @@ struct symbol_table
     std::vector<label> definitions;
     std::vector<define> defines;
     std::vector<delayed_expression> expressions;
+    uint16_t base_offset = 0;
 
     constexpr
     std::optional<uint16_t> get_symbol_definition(std::string_view name) const
@@ -131,7 +133,7 @@ struct symbol_table
         for(int i=0; i < (int)definitions.size(); i++)
         {
             if(definitions[i].name == name)
-                return definitions[i].offset;
+                return definitions[i].offset + base_offset;
         }
 
         for(int i=0; i < (int)defines.size(); i++)
@@ -820,18 +822,6 @@ constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos
         return set_val(decode_pack_constant(val, apos, res.extra_word, sett));
     }
 
-    if(is_label_reference(in))
-    {
-        auto test_val_opt = sym.get_symbol_definition(in);
-
-        if(test_val_opt.has_value())
-            return set_val(decode_pack_constant(test_val_opt.value(), apos, res.extra_word, sett));
-
-        res.extra_word = 0;
-        res.label = in;
-        return set_val(0x1f);
-    }
-
     bool should_delay = false;
     auto expression_opt = parse_expression(sym, in, should_delay);
 
@@ -1306,6 +1296,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 {
     return_info rinfo;
     symbol_table sym;
+    sym.base_offset = sett.location;
 
     stack_vector<uint16_t, MEM_SIZE> source_to_line;
 
@@ -1575,6 +1566,20 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
                 err.msg = "Something went wrong in delayed expression evaluation";
                 return {std::nullopt, err};
             }
+        }
+    }
+
+    ///relocate
+    ///doing it down here because in the future, will need to be able to relocate eg the translation map
+    if(sett.location != 0)
+    {
+        rinfo.mem.shift_contents_right(sett.location);
+        rinfo.translation_map.shift_contents_right(sett.location);
+        rinfo.pc_to_source_line.shift_contents_right(sett.location);
+
+        for(uint16_t& val : rinfo.source_line_to_pc)
+        {
+            val += sett.location;
         }
     }
 

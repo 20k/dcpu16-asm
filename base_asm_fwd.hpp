@@ -20,8 +20,11 @@ struct error_info
 struct return_info
 {
     stack_vector<uint16_t, MEM_SIZE> mem;
+    ///memory cell -> source character index
     stack_vector<uint16_t, MEM_SIZE> translation_map;
+    ///memory cell -> source line
     stack_vector<uint16_t, MEM_SIZE> pc_to_source_line;
+    ///input line to memory cell
     stack_vector<uint16_t, MEM_SIZE> source_line_to_pc;
 
     constexpr return_info(){}
