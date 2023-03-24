@@ -23,6 +23,7 @@ struct assembler_settings
     uint16_t location = 0;
     std::vector<std::string> label_values_to_extract;
     std::vector<std::pair<uint16_t, std::string_view>> provided_symbol_definitions;
+    bool allow_unresolved_symbols = false;
 };
 
 constexpr
@@ -108,17 +109,6 @@ struct define
 {
     uint16_t value = 0;
     std::string_view name = "";
-};
-
-struct delayed_expression
-{
-    // root instruction
-    uint16_t base_word = 0;
-    // the additional word
-    uint16_t extra_word = 0;
-    arg_pos::type type;
-    std::string_view expression = "";
-    bool is_memory_reference = true;
 };
 
 struct symbol_table
@@ -1303,6 +1293,133 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
     return err;
 }
 
+///returns error
+template<typename T>
+constexpr
+std::optional<std::string_view> resolve_delayed_expression(T& mem_in, symbol_table& sym, const delayed_expression& delayed, bool allow_further_delaying, std::vector<delayed_expression>& unresolved)
+{
+    bool should_delay = false;
+    auto value_opt = parse_expression(sym, delayed.expression, should_delay);
+
+    if(should_delay && !allow_further_delaying)
+        return "Expression contains undefined label";
+
+    if(should_delay)
+    {
+        unresolved.push_back(delayed);
+        return std::nullopt;
+    }
+
+    expression_result& res = value_opt.value();
+
+    uint16_t& mem = mem_in[delayed.base_word];
+
+    if(res.which_register.has_value())
+    {
+        if(!delayed.is_memory_reference && res.word.has_value())
+        {
+            return "Cannot execute reg + constant unless its in a memory reference";
+        }
+
+        uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+
+        if(res.op.has_value() && res.op.value() != "+")
+        {
+            return "Expressions must boil down to [reg + constant], or solely reg or solely constant otherwise";
+        }
+
+        uint16_t offset = 0;
+
+        if(delayed.is_memory_reference)
+        {
+            auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
+
+            if(reg_opt.has_value())
+            {
+                offset = 0x10 + reg_opt.value();
+            }
+            else if(iequal(res.which_register.value(), "sp"))
+            {
+                offset = 0x1a;
+            }
+            else
+            {
+                return "Expression tried to use something which was not a register or a label";
+            }
+        }
+        else
+        {
+            auto reg_opt = get_register_immediate_encoding(res.which_register.value());
+
+            if(reg_opt.has_value())
+            {
+                offset = reg_opt.value();
+            }
+            else
+            {
+                return "Expression involving a register failed to decode, invalid register?";
+            }
+        }
+
+        mem_in[delayed.extra_word] = extra_value;
+
+        if(delayed.type == arg_pos::A)
+        {
+            mem = mem & 0b0000001111111111;
+            mem = mem | (offset << 10);
+        }
+
+        if(delayed.type == arg_pos::B)
+        {
+            mem = mem & 0b1111110000011111;
+            mem = mem | (offset << 5);
+        }
+    }
+    else
+    {
+        uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+
+        if(res.word.has_value())
+        {
+            uint16_t offset = 0;
+
+            if(delayed.is_memory_reference)
+            {
+                offset = 0x1e;
+            }
+            else
+            {
+                if(res.which_register.has_value())
+                {
+                    return "Cannot have both a register and a constant as a literal";
+                }
+
+                offset = 0x1f;
+            }
+
+            mem_in[delayed.extra_word] = extra_value;
+
+            if(delayed.type == arg_pos::A)
+            {
+                mem = mem & 0b0000001111111111;
+                mem = mem | (offset << 10);
+            }
+
+            if(delayed.type == arg_pos::B)
+            {
+                mem = mem & 0b1111110000011111;
+                mem = mem | (offset << 5);
+            }
+        }
+        else
+        {
+            return "Something went wrong in delayed expression evaluation";
+        }
+    }
+
+    return std::nullopt;
+}
+
 constexpr
 std::pair<std::optional<return_info>, error_info> assemble(std::string_view text, assembler_settings sett = assembler_settings())
 {
@@ -1419,137 +1536,25 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         }
     }*/
 
-    for(delayed_expression& delayed : sym.expressions)
-    {
-        bool should_delay = false;
-        auto value_opt = parse_expression(sym, delayed.expression, should_delay);
+    std::vector<delayed_expression> unresolved;
 
+    for(const delayed_expression& delayed : sym.expressions)
+    {
         error_info err;
         err.character = 0;
         err.line = rinfo.pc_to_source_line[delayed.base_word];
         err.name_in_source = delayed.expression;
 
-        if(should_delay)
-        {
-            err.msg = "Expression contains undefined label";
+        auto patch_result = resolve_delayed_expression(rinfo.mem, sym, delayed, sett.allow_unresolved_symbols, unresolved);
 
+        if(patch_result.has_value())
+        {
+            err.msg = patch_result.value();
             return {std::nullopt, err};
         }
-
-        expression_result& res = value_opt.value();
-
-        uint16_t& mem = rinfo.mem.svec[delayed.base_word];
-
-        if(res.which_register.has_value())
-        {
-            if(!delayed.is_memory_reference && res.word.has_value())
-            {
-                err.msg = "Cannot execute reg + constant unless its in a memory reference";
-                return {std::nullopt, err};
-            }
-
-            uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
-
-            if(res.op.has_value() && res.op.value() != "+")
-            {
-                err.msg = "Expressions must boil down to [reg + constant], or solely reg or solely constant otherwise";
-
-                return {std::nullopt, err};
-            }
-
-            uint16_t offset = 0;
-
-            if(delayed.is_memory_reference)
-            {
-                auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
-
-                if(reg_opt.has_value())
-                {
-                    offset = 0x10 + reg_opt.value();
-                }
-                else if(iequal(res.which_register.value(), "sp"))
-                {
-                    offset = 0x1a;
-                }
-                else
-                {
-                    err.msg = "Expression tried to use something which was not a register or a label";
-                    return {std::nullopt, err};
-                }
-            }
-            else
-            {
-                auto reg_opt = get_register_immediate_encoding(res.which_register.value());
-
-                if(reg_opt.has_value())
-                {
-                    offset = reg_opt.value();
-                }
-                else
-                {
-                    err.msg = "Expression involving a register failed to decode, invalid register?";
-                    return {std::nullopt, err};
-                }
-            }
-
-            rinfo.mem.svec[delayed.extra_word] = extra_value;
-
-            if(delayed.type == arg_pos::A)
-            {
-                mem = mem & 0b0000001111111111;
-                mem = mem | (offset << 10);
-            }
-
-            if(delayed.type == arg_pos::B)
-            {
-                mem = mem & 0b1111110000011111;
-                mem = mem | (offset << 5);
-            }
-        }
-        else
-        {
-            uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
-
-            if(res.word.has_value())
-            {
-                uint16_t offset = 0;
-
-                if(delayed.is_memory_reference)
-                {
-                    offset = 0x1e;
-                }
-                else
-                {
-                    if(res.which_register.has_value())
-                    {
-                        err.msg = "Cannot have both a register and a constant as a literal";
-                        return {std::nullopt, err};
-                    }
-
-                    offset = 0x1f;
-                }
-
-                rinfo.mem.svec[delayed.extra_word] = extra_value;
-
-                if(delayed.type == arg_pos::A)
-                {
-                    mem = mem & 0b0000001111111111;
-                    mem = mem | (offset << 10);
-                }
-
-                if(delayed.type == arg_pos::B)
-                {
-                    mem = mem & 0b1111110000011111;
-                    mem = mem | (offset << 5);
-                }
-            }
-            else
-            {
-                err.msg = "Something went wrong in delayed expression evaluation";
-                return {std::nullopt, err};
-            }
-        }
     }
+
+    rinfo.unresolved_expressions = unresolved;
 
     ///relocate
     ///doing it down here because in the future, will need to be able to relocate eg the translation map
@@ -1586,6 +1591,41 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
     }
 
     return {rinfo, error_info()};
+}
+
+template<typename T>
+constexpr
+std::optional<error_info> resolve_delayed_expressions(T& mem, const std::vector<std::pair<uint16_t, std::string>>& resolve_table, const std::vector<delayed_expression>& unresolved_expressions)
+{
+    symbol_table sym;
+
+    for(const auto& [val, name] : resolve_table)
+    {
+        define d;
+        d.name = name;
+        d.value = val;
+
+        sym.defines.push_back(d);
+    }
+
+    for(const delayed_expression& delayed : unresolved_expressions)
+    {
+        error_info inf;
+        inf.character = -1;
+        inf.line = -1;
+        inf.name_in_source = delayed.expression;
+
+        std::vector<delayed_expression> none;
+        auto patch_result = resolve_delayed_expression(mem, sym, delayed, false, none);
+
+        if(patch_result.has_value())
+        {
+            inf.msg = patch_result.value();
+            return inf;
+        }
+    }
+
+    return std::nullopt;
 }
 
 #endif // BASE_ASM_HPP_INCLUDED
