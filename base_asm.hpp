@@ -1647,9 +1647,25 @@ std::pair<std::optional<return_info>, error_info> assemble_multiple(const T<U>& 
         if(!result.has_value())
             return {std::nullopt, err};
 
-        for(uint16_t i : result.value().mem)
+        /*for(uint16_t i : result.value().mem)
         {
             combined.mem.push_back(i);
+        }*/
+
+        /*size_t old_idx = combined.mem.idx;
+
+        for(; old_idx != result.value().mem.idx)
+
+        combined.mem.idx = result.value().mem.idx;*/
+
+        size_t old_size = combined.mem.idx;
+        size_t new_size = result.value().mem.idx;
+
+        combined.mem.idx = new_size;
+
+        for(auto i=old_size; i != new_size; i++)
+        {
+            combined.mem[i] = result.value().mem[i];
         }
 
         ///offset by however long the initial program was so we patch the correct byte
