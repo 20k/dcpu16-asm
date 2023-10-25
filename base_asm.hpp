@@ -32,7 +32,8 @@ bool should_prune(char c)
     return c == ' ' || c == '\n' || c == ',';
 }
 
-constexpr std::optional<int> get_register_assembly_value_from_name(std::string_view in)
+constexpr
+std::optional<int> get_register_assembly_value_from_name(std::string_view in)
 {
     if(iequal(in, "a"))
         return 0;
@@ -61,7 +62,8 @@ constexpr std::optional<int> get_register_assembly_value_from_name(std::string_v
     return std::nullopt;
 }
 
-constexpr std::optional<int> get_register_immediate_encoding(std::string_view in)
+constexpr
+std::optional<int> get_register_immediate_encoding(std::string_view in)
 {
     if(auto value_opt = get_register_assembly_value_from_name(in); value_opt.has_value())
     {
@@ -81,26 +83,28 @@ constexpr std::optional<int> get_register_immediate_encoding(std::string_view in
    return std::nullopt;
 }
 
-inline
-constexpr uint32_t construct_type_a(uint32_t o, uint32_t a, uint32_t b)
+constexpr
+uint32_t construct_type_a(uint32_t o, uint32_t a, uint32_t b)
 {
     return o | (b << 5) | (a << 10);
 }
 
-inline
-constexpr uint32_t construct_type_b(uint32_t o, uint32_t a)
+constexpr
+uint32_t construct_type_b(uint32_t o, uint32_t a)
 {
     return (o << 5) | (a << 10);
 }
 
-inline
-constexpr uint32_t construct_type_c(uint32_t o)
+constexpr
+uint32_t construct_type_c(uint32_t o)
 {
     return (o << 10);
 }
 
 struct label
 {
+    std::vector<std::uint32_t> scope;
+
     uint16_t offset = 0;
     std::string_view name = "";
 };
@@ -111,20 +115,41 @@ struct define
     std::string_view name = "";
 };
 
+constexpr
+bool compatible_scope(std::span<const std::uint32_t> scope_1, std::span<const std::uint32_t> scope_2)
+{
+    if(scope_2.size() < scope_1.size())
+        return compatible_scope(scope_2, scope_1);
+
+    ///l2 scope > l1 scope
+    ///check if l2 is a subscope of l1
+    for(uint32_t i=0; i < (uint32_t)scope_1.size(); i++)
+    {
+        if(scope_2[i] != scope_1[i])
+            return false;
+    }
+
+    return true;
+}
+
 struct symbol_table
 {
-    std::vector<label> usages;
+    //std::vector<label> usages;
     std::vector<label> definitions;
     std::vector<define> defines;
     std::vector<delayed_expression> expressions;
     std::vector<std::string_view> exports;
     uint16_t base_offset = 0;
+    uint32_t next_scope_id = 0;
 
     constexpr
-    std::optional<uint16_t> get_symbol_definition(std::string_view name) const
+    std::optional<uint16_t> get_symbol_definition(std::string_view name, std::span<const std::uint32_t> scope) const
     {
         for(int i=0; i < (int)definitions.size(); i++)
         {
+            if(!compatible_scope(scope, definitions[i].scope))
+                continue;
+
             if(definitions[i].name == name)
                 return definitions[i].offset + base_offset;
         }
@@ -368,7 +393,7 @@ struct expression_result
 
 template<typename T>
 constexpr
-std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const std::vector<std::string_view>& stk, bool& should_delay, int idx)
+std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const std::vector<std::string_view>& stk, bool& should_delay, int idx, std::span<const uint32_t> scope)
 {
     std::string_view found = stk[idx - 1];
 
@@ -378,8 +403,8 @@ std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expressio
         me.op = found;
         idx--;
 
-        auto [right_exp_opt, idx1] = resolve_expression<T>(sym, stk, should_delay, idx);
-        auto [left_exp_opt, idx2] = resolve_expression<T>(sym, stk, should_delay, idx1);
+        auto [right_exp_opt, idx1] = resolve_expression<T>(sym, stk, should_delay, idx, scope);
+        auto [left_exp_opt, idx2] = resolve_expression<T>(sym, stk, should_delay, idx1, scope);
 
         idx = idx2;
 
@@ -511,7 +536,7 @@ std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expressio
                 return {res, idx};
             }
 
-            auto val_opt = sym.get_symbol_definition(elem);
+            auto val_opt = sym.get_symbol_definition(elem, scope);
 
             if(val_opt.has_value())
             {
@@ -529,7 +554,7 @@ std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expressio
 
 ///shunting yard
 constexpr
-std::optional<expression_result> parse_expression(const symbol_table& sym, std::string_view expr, bool& should_delay)
+std::optional<expression_result> parse_expression(const symbol_table& sym, std::string_view expr, bool& should_delay, std::span<const uint32_t> scope)
 {
     std::array precedence
     {
@@ -644,7 +669,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.size());
+    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.size(), scope);
 
     if(fin_idx > 0)
         return std::nullopt;
@@ -696,7 +721,7 @@ struct decode_result
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos::type apos, symbol_table& sym, assembler_settings& sett)
+constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos::type apos, symbol_table& sym, assembler_settings& sett, std::span<const uint32_t> scope)
 {
     decode_result res;
 
@@ -735,7 +760,7 @@ constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos
             return set_val(0x19);
 
         bool should_delay = false;
-        auto expression_opt = parse_expression(sym, extracted, should_delay);
+        auto expression_opt = parse_expression(sym, extracted, should_delay, scope);
 
         if(expression_opt.has_value())
         {
@@ -816,7 +841,7 @@ constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos
     }
 
     bool should_delay = false;
-    auto expression_opt = parse_expression(sym, in, should_delay);
+    auto expression_opt = parse_expression(sym, in, should_delay, scope);
 
     if(expression_opt.has_value())
     {
@@ -870,6 +895,21 @@ struct opcode_adder_data
     stack_vector<uint16_t, MEM_SIZE>& pc_to_source_line;
     stack_vector<uint16_t, MEM_SIZE>& source_line_to_pc;
     stack_vector<uint16_t, MEM_SIZE> source_to_line;
+    std::vector<uint32_t> scope;
+    uint32_t next_scope_id = 0;
+
+    constexpr
+    void push_scope()
+    {
+        scope.push_back(next_scope_id++);
+    }
+
+    constexpr
+    void pop_scope()
+    {
+        if(scope.size() > 0)
+            scope.pop_back();
+    }
 
     constexpr
     opcode_adder_data(std::string_view text, stack_vector<uint16_t, MEM_SIZE>& _mem, stack_vector<uint16_t, MEM_SIZE>& _translation_map, stack_vector<uint16_t, MEM_SIZE>& _pc_to_source_line, stack_vector<uint16_t, MEM_SIZE>& _source_line_to_pc) : mem(_mem), translation_map(_translation_map), pc_to_source_line(_pc_to_source_line), source_line_to_pc(_source_line_to_pc)
@@ -1010,6 +1050,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
         label l;
         l.name = trimmed;
         l.offset = opcode_add.mem.size();
+        l.scope = opcode_add.scope;
 
         sym.definitions.push_back(l);
         return std::nullopt;
@@ -1031,6 +1072,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
 
         for(uint16_t i=0; i < val; i++)
         {
+            opcode_add.push_scope();
+
             in = start_view;
 
             while(peek_next(in, true) != ".end" && peek_next(in, true) != "end")
@@ -1048,6 +1091,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                 err.msg = "Fatal error, no .end?";
                 return err;
             }
+
+            opcode_add.pop_scope();
         }
 
         if(val == 0)
@@ -1113,7 +1158,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
             }
             else if(is_label_reference(value))
             {
-                auto sym_opt = sym.get_symbol_definition(value);
+                auto sym_opt = sym.get_symbol_definition(value, opcode_add.scope);
 
                 if(sym_opt.has_value())
                 {
@@ -1121,12 +1166,13 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                 }
                 else
                 {
-                    label use;
+                    /*label use;
                     use.name = value;
                     use.offset = opcode_add.mem.size();
 
-                    sym.usages.push_back(use);
+                    sym.usages.push_back(use);*/
 
+                    ///do i need a delayed expression here?
                     opcode_add.mem.push_back(0);
                 }
             }
@@ -1249,8 +1295,8 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
 
                 auto val_a = consume_next(in, false);
 
-                auto decoded_b_opt = decode_value(val_b, arg_pos::B, sym, sett);
-                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett);
+                auto decoded_b_opt = decode_value(val_b, arg_pos::B, sym, sett, opcode_add.scope);
+                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett, opcode_add.scope);
 
                 if(!decoded_b_opt.has_value())
                 {
@@ -1283,15 +1329,6 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                         return err;
                     }
 
-                    if(decoded_a.label.has_value())
-                    {
-                        label l;
-                        l.name = decoded_a.label.value();
-                        l.offset = opcode_add.mem.size();
-
-                        sym.usages.push_back(l);
-                    }
-
                     if(decoded_a.expression.has_value())
                     {
                         delayed_expression delayed;
@@ -1300,6 +1337,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                         delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
                         delayed.is_memory_reference = decoded_a.is_address;
+                        delayed.scope = opcode_add.scope;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1317,15 +1355,6 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                         return err;
                     }
 
-                    if(decoded_b.label.has_value())
-                    {
-                        label l;
-                        l.name = decoded_b.label.value();
-                        l.offset = opcode_add.mem.size();
-
-                        sym.usages.push_back(l);
-                    }
-
                     if(decoded_b.expression.has_value())
                     {
                         delayed_expression delayed;
@@ -1334,6 +1363,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                         delayed.expression = decoded_b.expression.value();
                         delayed.type = arg_pos::B;
                         delayed.is_memory_reference = decoded_b.is_address;
+                        delayed.scope = opcode_add.scope;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1348,7 +1378,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
             {
                 auto val_a = consume_next(in, false);
 
-                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett);
+                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett, opcode_add.scope);
 
                 if(!decoded_a_opt.has_value())
                 {
@@ -1374,15 +1404,6 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                         return err;
                     }
 
-                    if(decoded_a.label.has_value())
-                    {
-                        label l;
-                        l.name = decoded_a.label.value();
-                        l.offset = opcode_add.mem.size();
-
-                        sym.usages.push_back(l);
-                    }
-
                     if(decoded_a.expression.has_value())
                     {
                         delayed_expression delayed;
@@ -1391,6 +1412,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder
                         delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
                         delayed.is_memory_reference = decoded_a.is_address;
+                        delayed.scope = opcode_add.scope;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1422,7 +1444,7 @@ constexpr
 std::optional<std::string_view> resolve_delayed_expression(T& mem_in, symbol_table& sym, const delayed_expression& delayed, bool allow_further_delaying, std::vector<delayed_expression>& unresolved)
 {
     bool should_delay = false;
-    auto value_opt = parse_expression(sym, delayed.expression, should_delay);
+    auto value_opt = parse_expression(sym, delayed.expression, should_delay, delayed.scope);
 
     if(should_delay && !allow_further_delaying)
         return "Expression contains undefined label";
@@ -1653,7 +1675,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
     for(std::string_view l : sett.label_values_to_extract)
     {
-        auto val_opt = sym.get_symbol_definition(l);
+        auto val_opt = sym.get_symbol_definition(l, {});
 
         if(val_opt.has_value())
         {
@@ -1663,7 +1685,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
     for(std::string_view l : sym.exports)
     {
-        auto val_opt = sym.get_symbol_definition(l);
+        auto val_opt = sym.get_symbol_definition(l, {});
 
         if(val_opt.has_value())
         {

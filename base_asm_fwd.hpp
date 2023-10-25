@@ -27,6 +27,7 @@ struct delayed_expression
     arg_pos::type type;
     std::string_view expression = "";
     bool is_memory_reference = true;
+    std::vector<uint32_t> scope;
 };
 
 struct return_info
