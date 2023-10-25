@@ -4,6 +4,7 @@
 #include <string_view>
 #include <cctype>
 #include <type_traits>
+#include <cstdint>
 
 template<typename T>
 inline
@@ -329,13 +330,13 @@ constexpr int get_binary_digit(char in)
 }
 
 inline
-constexpr uint64_t positive_stoi_cxper(std::string_view in, int radix)
+constexpr std::uint64_t positive_stoi_cxper(std::string_view in, int radix)
 {
     if(in.size() == 0)
         return 0;
 
-    uint64_t value = 0;
-    uint64_t base = 1;
+    std::uint64_t value = 0;
+    std::uint64_t base = 1;
 
     for(int i=(int)in.size() - 1; i >= 0; i--)
     {
