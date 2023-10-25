@@ -941,6 +941,55 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         return std::nullopt;
     }
 
+    if(iequal(".repeat", consumed_name) || iequal("repeat", consumed_name))
+    {
+        std::string_view times = consume_next(in, true);
+
+        if(!is_constant(times))
+        {
+            err.msg = ".repeat values must be a constant";
+            return err;
+        }
+
+        uint16_t val = get_constant_of<uint16_t>(times);
+
+        std::string_view start_view = in;
+
+        for(uint16_t i=0; i < val; i++)
+        {
+            in = start_view;
+
+            while(peek_next(in, true) != ".end" && peek_next(in, true) != "end")
+            {
+                auto err_opt = add_opcode_with_prefix(sym, in, out, token_text_offset_start, token_start, source_to_line, sett);
+
+                if(err_opt.has_value())
+                    return err_opt;
+            }
+
+            std::string_view str = consume_next(in, true);
+
+            if(str != ".end" && str != "end")
+            {
+                err.msg = "Fatal error, no .end?";
+                return err;
+            }
+        }
+
+        if(val == 0)
+        {
+            std::string_view str = consume_next(in, true);
+
+            if(str != ".end" && str != "end")
+            {
+                err.msg = "Fatal error, no .end?";
+                return err;
+            }
+        }
+
+        return std::nullopt;
+    }
+
     if(iequal(".def", consumed_name) || iequal("def", consumed_name))
     {
         auto label_name = consume_next(in, true);
