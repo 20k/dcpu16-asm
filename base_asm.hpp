@@ -854,9 +854,83 @@ struct opcode
     uint16_t code;
 };
 
-inline
+struct opcode_adder_data;
+
 constexpr
-std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line, assembler_settings& sett)
+std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder_data& opcode_add, std::string_view& in, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line, assembler_settings& sett);
+
+struct opcode_adder_data
+{
+    size_t start_size = 0;
+    size_t last_mem_size = 0;
+    size_t last_line = 0;
+
+    stack_vector<uint16_t, MEM_SIZE>& mem;
+    stack_vector<uint16_t, MEM_SIZE>& translation_map;
+    stack_vector<uint16_t, MEM_SIZE>& pc_to_source_line;
+    stack_vector<uint16_t, MEM_SIZE>& source_line_to_pc;
+    stack_vector<uint16_t, MEM_SIZE> source_to_line;
+
+    constexpr
+    opcode_adder_data(std::string_view text, stack_vector<uint16_t, MEM_SIZE>& _mem, stack_vector<uint16_t, MEM_SIZE>& _translation_map, stack_vector<uint16_t, MEM_SIZE>& _pc_to_source_line, stack_vector<uint16_t, MEM_SIZE>& _source_line_to_pc) : mem(_mem), translation_map(_translation_map), pc_to_source_line(_pc_to_source_line), source_line_to_pc(_source_line_to_pc)
+    {
+        start_size = text.size();
+
+        int line = 0;
+        for(int idx = 0; idx < (int)text.size(); idx++)
+        {
+            source_to_line.push_back((uint16_t)line);
+
+            if(text[idx] == '\n')
+            {
+                line++;
+            }
+        }
+
+        source_line_to_pc.idx = line;
+    }
+
+    constexpr
+    std::optional<error_info> next(symbol_table& sym, std::string_view& text, assembler_settings& sett)
+    {
+        size_t offset = start_size - text.size();
+
+        size_t token_offset = 0;
+
+        auto error_opt = add_opcode_with_prefix(sym, *this, text, token_offset, offset, source_to_line, sett);
+
+        uint16_t source_character = offset + token_offset;
+
+        for(size_t i = last_mem_size; i < mem.size(); i++)
+        {
+            translation_map.push_back(source_character);
+            pc_to_source_line.push_back(source_to_line[source_character]);
+        }
+
+        if(pc_to_source_line.size() > 0)
+        {
+            for(size_t idx = last_line+1; idx <= pc_to_source_line.back(); idx++)
+            {
+                source_line_to_pc[idx] = last_mem_size;
+            }
+        }
+
+        last_mem_size = mem.size();
+
+        if(pc_to_source_line.size() > 0)
+            last_line = pc_to_source_line.back();
+
+        if(error_opt.has_value())
+        {
+            return {error_opt.value()};
+        }
+
+        return std::nullopt;
+    }
+};
+
+constexpr
+std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, opcode_adder_data& opcode_add, std::string_view& in, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line, assembler_settings& sett)
 {
     error_info err;
 
@@ -919,7 +993,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
     err.name_in_source = consumed_name;
     err.character = token_text_offset_start + token_start;
-    err.line = source_to_line[err.character];
+    err.line = opcode_add.source_to_line[err.character];
 
     if(consumed_name.size() == 0)
         return std::nullopt;
@@ -935,7 +1009,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
         label l;
         l.name = trimmed;
-        l.offset = out.size();
+        l.offset = opcode_add.mem.size();
 
         sym.definitions.push_back(l);
         return std::nullopt;
@@ -961,7 +1035,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
             while(peek_next(in, true) != ".end" && peek_next(in, true) != "end")
             {
-                auto err_opt = add_opcode_with_prefix(sym, in, out, token_text_offset_start, token_start, source_to_line, sett);
+                auto err_opt = opcode_add.next(sym, in, sett);
 
                 if(err_opt.has_value())
                     return err_opt;
@@ -1035,7 +1109,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
             if(is_constant(value))
             {
-                out.push_back(get_constant_of<uint16_t>(value));
+                opcode_add.mem.push_back(get_constant_of<uint16_t>(value));
             }
             else if(is_label_reference(value))
             {
@@ -1043,17 +1117,17 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 if(sym_opt.has_value())
                 {
-                    out.push_back(sym_opt.value());
+                    opcode_add.mem.push_back(sym_opt.value());
                 }
                 else
                 {
                     label use;
                     use.name = value;
-                    use.offset = out.size();
+                    use.offset = opcode_add.mem.size();
 
                     sym.usages.push_back(use);
 
-                    out.push_back(0);
+                    opcode_add.mem.push_back(0);
                 }
             }
             else if(is_string(value))
@@ -1131,12 +1205,12 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                     uint16_t wide = (uint8_t)c;
 
-                    out.push_back(wide);
+                    opcode_add.mem.push_back(wide);
                 }
             }
             else if(value == "?")
             {
-                out.push_back(0);
+                opcode_add.mem.push_back(0);
             }
             else
             {
@@ -1195,9 +1269,9 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 auto instr = construct_type_a(code, decoded_a.val, decoded_b.val);
 
-                uint16_t instruction_word = out.size();
+                uint16_t instruction_word = opcode_add.mem.size();
 
-                out.push_back(instr);
+                opcode_add.mem.push_back(instr);
 
                 if(decoded_a.extra_word.has_value())
                 {
@@ -1213,7 +1287,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     {
                         label l;
                         l.name = decoded_a.label.value();
-                        l.offset = out.size();
+                        l.offset = opcode_add.mem.size();
 
                         sym.usages.push_back(l);
                     }
@@ -1222,7 +1296,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
-                        delayed.extra_word = out.size();
+                        delayed.extra_word = opcode_add.mem.size();
                         delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
                         delayed.is_memory_reference = decoded_a.is_address;
@@ -1230,7 +1304,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         sym.expressions.push_back(delayed);
                     }
 
-                    out.push_back(promote_a);
+                    opcode_add.mem.push_back(promote_a);
                 }
 
                 if(decoded_b.extra_word.has_value())
@@ -1247,7 +1321,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     {
                         label l;
                         l.name = decoded_b.label.value();
-                        l.offset = out.size();
+                        l.offset = opcode_add.mem.size();
 
                         sym.usages.push_back(l);
                     }
@@ -1256,7 +1330,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
-                        delayed.extra_word = out.size();
+                        delayed.extra_word = opcode_add.mem.size();
                         delayed.expression = decoded_b.expression.value();
                         delayed.type = arg_pos::B;
                         delayed.is_memory_reference = decoded_b.is_address;
@@ -1264,7 +1338,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         sym.expressions.push_back(delayed);
                     }
 
-                    out.push_back(promote_b);
+                    opcode_add.mem.push_back(promote_b);
                 }
 
                 return std::nullopt;
@@ -1286,9 +1360,9 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 auto instr = construct_type_b(code, decoded_a.val);
 
-                uint16_t instruction_word = out.size();
+                uint16_t instruction_word = opcode_add.mem.size();
 
-                out.push_back(instr);
+                opcode_add.mem.push_back(instr);
 
                 if(decoded_a.extra_word.has_value())
                 {
@@ -1304,7 +1378,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     {
                         label l;
                         l.name = decoded_a.label.value();
-                        l.offset = out.size();
+                        l.offset = opcode_add.mem.size();
 
                         sym.usages.push_back(l);
                     }
@@ -1313,7 +1387,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
-                        delayed.extra_word = out.size();
+                        delayed.extra_word = opcode_add.mem.size();
                         delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
                         delayed.is_memory_reference = decoded_a.is_address;
@@ -1321,7 +1395,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         sym.expressions.push_back(delayed);
                     }
 
-                    out.push_back(promote_a);
+                    opcode_add.mem.push_back(promote_a);
                 }
 
                 return std::nullopt;
@@ -1331,7 +1405,7 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
             {
                 auto instr = construct_type_c(code);
 
-                out.push_back(instr);
+                opcode_add.mem.push_back(instr);
 
                 return std::nullopt;
             }
@@ -1486,53 +1560,11 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         sym.defines.push_back(d);
     }
 
-    stack_vector<uint16_t, MEM_SIZE> source_to_line;
-
-    int line = 0;
-    for(int idx = 0; idx < (int)text.size(); idx++)
-    {
-        source_to_line.push_back((uint16_t)line);
-
-        if(text[idx] == '\n')
-        {
-            line++;
-        }
-    }
-
-    size_t start_size = text.size();
-    size_t last_mem_size = 0;
-    size_t last_line = 0;
-
-    rinfo.source_line_to_pc.idx = line;
+    opcode_adder_data adder(text, rinfo.mem, rinfo.translation_map, rinfo.pc_to_source_line, rinfo.source_line_to_pc);
 
     while(text.size() > 0)
     {
-        size_t offset = start_size - text.size();
-
-        size_t token_offset = 0;
-
-        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line, sett);
-
-        uint16_t source_character = offset + token_offset;
-
-        for(size_t i = last_mem_size; i < rinfo.mem.size(); i++)
-        {
-            rinfo.translation_map.push_back(source_character);
-            rinfo.pc_to_source_line.push_back(source_to_line[source_character]);
-        }
-
-        if(rinfo.pc_to_source_line.size() > 0)
-        {
-            for(size_t idx = last_line+1; idx <= rinfo.pc_to_source_line.back(); idx++)
-            {
-                rinfo.source_line_to_pc[idx] = last_mem_size;
-            }
-        }
-
-        last_mem_size = rinfo.mem.size();
-
-        if(rinfo.pc_to_source_line.size() > 0)
-            last_line = rinfo.pc_to_source_line.back();
+        auto error_opt = adder.next(sym, text, sett);
 
         if(error_opt.has_value())
         {
