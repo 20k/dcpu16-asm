@@ -7,7 +7,6 @@
 #include <cstdint>
 
 template<typename T>
-inline
 constexpr std::string_view trim_start(std::string_view view, const T& matches)
 {
     if(view.size() == 0)
@@ -26,7 +25,6 @@ constexpr std::string_view trim_start(std::string_view view, const T& matches)
 }
 
 template<typename T>
-inline
 constexpr std::string_view trim_end(std::string_view view, const T& matches)
 {
     if(view.size() == 0)
@@ -44,7 +42,6 @@ constexpr std::string_view trim_end(std::string_view view, const T& matches)
     return view;
 }
 
-inline
 constexpr std::string_view consume_next(std::string_view& in, bool is_space_delimited)
 {
     if(in.size() == 0)
@@ -172,7 +169,6 @@ constexpr std::string_view peek_next(std::string_view in, bool is_space_delimite
     return consume_next(in, is_space_delimited);
 }
 
-inline
 constexpr char ascii_to_lower(char c)
 {
     if(c >= 'A' && c <= 'Z')
@@ -197,7 +193,6 @@ std::string to_lower(std::string_view in)
     return ret;
 }*/
 
-inline
 constexpr bool iequal(std::string_view in1, std::string_view in2)
 {
     if(in1.size() != in2.size())
@@ -212,13 +207,11 @@ constexpr bool iequal(std::string_view in1, std::string_view in2)
     return true;
 }
 
-inline
 constexpr bool is_label_definition(std::string_view in)
 {
     return in.starts_with(':') || in.ends_with(':');
 }
 
-inline
 constexpr bool is_hex_digit(char in)
 {
     return
@@ -231,7 +224,6 @@ constexpr bool is_hex_digit(char in)
     in == 'f' || in == 'F';
 }
 
-inline
 constexpr bool is_digit(char in)
 {
     return in >= '0' && in <= '9';
@@ -242,11 +234,29 @@ constexpr bool is_binary_digit(char in)
     return in == '0' || in == '1';
 }
 
-inline
+constexpr bool is_valid_string_delimiter(char c)
+{
+    return c == '\'' || c == '\"';
+}
+
+constexpr bool is_string(std::string_view in)
+{
+    if(in.size() < 2)
+        return false;
+
+    char first = in[0];
+
+    return is_valid_string_delimiter(first) && in.back() == first;
+}
+
 constexpr bool is_constant(std::string_view in)
 {
     if(in.size() == 0)
         return false;
+
+    ///single character strings
+    if(is_string(in) && in.size() == 3)
+        return true;
 
     if(in.starts_with('-'))
     {
@@ -287,17 +297,7 @@ constexpr bool is_constant(std::string_view in)
     return true;
 }
 
-constexpr bool is_string(std::string_view in)
-{
-    if(in.size() < 2)
-        return false;
 
-    char first = in[0];
-
-    return (first == '\'' || first == '\"') && in.back() == first;
-}
-
-inline
 constexpr int get_digit(char in)
 {
     if(!is_digit(in))
@@ -306,7 +306,6 @@ constexpr int get_digit(char in)
     return in - '0';
 }
 
-inline
 constexpr int get_hex_digit(char in)
 {
     if(!is_hex_digit(in))
@@ -329,7 +328,6 @@ constexpr int get_binary_digit(char in)
     return in == '1' ? 1 : 0;
 }
 
-inline
 constexpr std::uint64_t positive_stoi_cxper(std::string_view in, int radix)
 {
     if(in.size() == 0)
@@ -377,11 +375,15 @@ constexpr std::uint64_t positive_stoi_cxper(std::string_view in, int radix)
 }
 
 template<typename T>
-inline
 constexpr T get_constant_of(std::string_view in)
 {
     if(in.size() == 0)
         return 0;
+
+    if(is_string(in) && in.size() == 3)
+    {
+        return static_cast<T>(in[1]);
+    }
 
     bool is_neg = false;
 
@@ -412,7 +414,6 @@ constexpr T get_constant_of(std::string_view in)
         return n;
 }
 
-inline
 constexpr bool isalnum_c(char in)
 {
     if(in >= 'a' && in <= 'z')
@@ -430,7 +431,6 @@ constexpr bool isalnum_c(char in)
     return false;
 }
 
-inline
 constexpr bool is_label_reference(std::string_view in)
 {
     for(auto& i : in)
@@ -442,13 +442,11 @@ constexpr bool is_label_reference(std::string_view in)
     return true;
 }
 
-inline
 constexpr bool is_address(std::string_view in)
 {
     return in.starts_with("[") && in.ends_with("]");
 }
 
-inline
 constexpr std::string_view extract_address_contents(std::string_view in)
 {
     if(!is_address(in))

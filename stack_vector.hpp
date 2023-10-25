@@ -24,6 +24,7 @@ struct stack_vector
         idx++;
     }
 
+    constexpr
     void pop_back()
     {
         idx--;
@@ -90,6 +91,18 @@ struct stack_vector
     }
 
     constexpr
+    auto data()
+    {
+        return &svec[0];
+    }
+
+    constexpr
+    const auto data() const
+    {
+        return &svec[0];
+    }
+
+    constexpr
     void clear()
     {
         idx = 0;
@@ -99,6 +112,17 @@ struct stack_vector
     std::span<T> as_span()
     {
         return std::span<T>{begin(), end()};
+    }
+
+    constexpr
+    void shift_contents_right(size_t amount)
+    {
+        if(idx + amount >= max_size)
+            return;
+
+        std::copy_backward(begin(), end(), begin() + idx + amount);
+
+        idx += amount;
     }
 };
 

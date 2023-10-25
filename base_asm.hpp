@@ -12,10 +12,19 @@
 #include <iostream>
 #include <cmath>
 #include <assert.h>
-#include "heap_vector.hpp"
+#include <vector>
 
 ///TODO: https://github.com/EqualizR/DEQOS/blob/master/AssemblerExtensions.txt
 ///https://github.com/ddevault/organic
+
+struct assembler_settings
+{
+    bool no_packed_constants = false;
+    uint16_t location = 0;
+    std::vector<std::string> label_values_to_extract;
+    std::vector<std::pair<uint16_t, std::string_view>> provided_symbol_definitions;
+    bool allow_unresolved_symbols = false;
+};
 
 constexpr
 bool should_prune(char c)
@@ -102,23 +111,14 @@ struct define
     std::string_view name = "";
 };
 
-struct delayed_expression
-{
-    // root instruction
-    uint16_t base_word = 0;
-    // the additional word
-    uint16_t extra_word = 0;
-    arg_pos::type type;
-    std::string_view expression = "";
-    bool is_memory_reference = true;
-};
-
 struct symbol_table
 {
-    heap_vector<label> usages;
-    heap_vector<label> definitions;
-    heap_vector<define> defines;
-    heap_vector<delayed_expression> expressions;
+    std::vector<label> usages;
+    std::vector<label> definitions;
+    std::vector<define> defines;
+    std::vector<delayed_expression> expressions;
+    std::vector<std::string_view> exports;
+    uint16_t base_offset = 0;
 
     constexpr
     std::optional<uint16_t> get_symbol_definition(std::string_view name) const
@@ -126,7 +126,7 @@ struct symbol_table
         for(int i=0; i < (int)definitions.size(); i++)
         {
             if(definitions[i].name == name)
-                return definitions[i].offset;
+                return definitions[i].offset + base_offset;
         }
 
         for(int i=0; i < (int)defines.size(); i++)
@@ -145,6 +145,21 @@ constexpr std::optional<std::string_view> consume_expression_token(std::string_v
 
     if(in.size() == 0)
         return "";
+
+    if(in.size() >= 3)
+    {
+        char start_tok = in[0];
+        char end_tok = in[2];
+
+        if(start_tok == end_tok && is_valid_string_delimiter(start_tok))
+        {
+            std::string_view data(in.begin(), in.begin() + 3);
+
+            in.remove_prefix(3);
+
+            return data;
+        }
+    }
 
     if(in.starts_with("0x"))
     {
@@ -353,7 +368,7 @@ struct expression_result
 
 template<typename T>
 constexpr
-std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const heap_vector<std::string_view>& stk, bool& should_delay, int idx)
+std::pair<std::optional<expression_result_with_width<T>>, int> resolve_expression(const symbol_table& sym, const std::vector<std::string_view>& stk, bool& should_delay, int idx)
 {
     std::string_view found = stk[idx - 1];
 
@@ -528,7 +543,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
 
     static_assert(precedence.size() == left_associative.size());
 
-    heap_vector<std::string_view> operator_stack;
+    std::vector<std::string_view> operator_stack;
 
     auto get_precedence = [&](std::string_view in)
     {
@@ -540,7 +555,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
         return left_associative[get_operator_idx(in)];
     };
 
-    heap_vector<std::string_view> output_queue;
+    std::vector<std::string_view> output_queue;
 
     while(expr.size() > 0)
     {
@@ -629,7 +644,7 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
     if(output_queue.size() == 0)
         return std::nullopt;
 
-    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.idx);
+    auto [found, fin_idx] = resolve_expression<uint64_t>(sym, output_queue, should_delay, output_queue.size());
 
     if(fin_idx > 0)
         return std::nullopt;
@@ -638,8 +653,14 @@ std::optional<expression_result> parse_expression(const symbol_table& sym, std::
 }
 
 constexpr
-uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<int32_t>& out)
+uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<int32_t>& out, assembler_settings& sett)
 {
+    if(sett.no_packed_constants)
+    {
+        out = std::optional<int32_t>{val};
+        return 0x1f;
+    }
+
     if(apos == arg_pos::A)
     {
         if(val == 0xFFFF)
@@ -660,38 +681,58 @@ uint16_t decode_pack_constant(uint16_t val, arg_pos::type apos, std::optional<in
     }
 }
 
+struct decode_result
+{
+    uint32_t val = 0;
+    std::optional<int32_t> extra_word;
+    std::optional<std::string_view> label;
+    std::optional<std::string_view> expression;
+    bool is_address = false;
+};
+
 // so
 // create a table of MAX_WHATEVER long which contains byte -> label mapping
 // then figure out a way to sub label pc value back in to instructions
 // could insert all label references into an array of word values, and then insert all label definitions into an array of pc values
 // then sub them in afterwards
 inline
-constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::type apos, std::optional<int32_t>& out, std::optional<std::string_view>& is_label, std::optional<std::string_view>& is_expression, symbol_table& sym)
+constexpr std::optional<decode_result> decode_value(std::string_view in, arg_pos::type apos, symbol_table& sym, assembler_settings& sett)
 {
+    decode_result res;
+
+    auto set_val = [&](uint32_t val)
+    {
+        res.val = val;
+
+        return res;
+    };
+
     {
         auto reg_opt = get_register_assembly_value_from_name(in);
 
         ///cannot return reg_opt, because otherwise it isn't constexpr due to optional lacking constexpr move
         if(reg_opt.has_value())
-            return reg_opt.value();
+            return set_val(reg_opt.value());
     }
 
     if(is_address(in))
     {
+        res.is_address = true;
+
         auto extracted = extract_address_contents(in);
 
         auto extracted_reg_opt = get_register_assembly_value_from_name(extracted);
 
         if(extracted_reg_opt.has_value())
         {
-            return 0x08 + extracted_reg_opt.value();
+            return set_val(0x08 + extracted_reg_opt.value());
         }
 
         if(iequal(extracted, "--sp") || iequal(extracted, "sp++"))
-            return 0x18;
+            return set_val(0x18);
 
         if(iequal(extracted, "sp"))
-            return 0x19;
+            return set_val(0x19);
 
         bool should_delay = false;
         auto expression_opt = parse_expression(sym, extracted, should_delay);
@@ -702,8 +743,8 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
             if(eres.fully_resolved())
             {
-                out = eres.word.value();
-                return 0x1e;
+                res.extra_word = eres.word.value();
+                return set_val(0x1e);
             }
 
             if(eres.which_register.has_value())
@@ -717,28 +758,28 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
                 {
                     if(iequal(reg, "sp"))
                     {
-                        out = eres.word.value();
-                        return 0x1a;
+                        res.extra_word = eres.word.value();
+                        return set_val(0x1a);
                     }
 
                     auto reg_val_opt = get_register_assembly_value_from_name(reg);
 
                     if(reg_val_opt.has_value())
                     {
-                        out = eres.word.value();
-                        return 0x10 + reg_val_opt.value();
+                        res.extra_word = eres.word.value();
+                        return set_val(0x10 + reg_val_opt.value());
                     }
                 }
                 else
                 {
                     if(iequal(reg, "sp"))
-                        return 0x19;
+                        return set_val(0x19);
 
                     auto reg_val_opt = get_register_assembly_value_from_name(reg);
 
                     if(reg_val_opt.has_value())
                     {
-                        return 0x08 + reg_val_opt.value();
+                        return set_val(0x08 + reg_val_opt.value());
                     }
                 }
             }
@@ -746,44 +787,32 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
 
         if(should_delay)
         {
-            out = 0;
-            is_expression = extracted;
-            return 0x10; // placeholder
+            res.extra_word = 0;
+            res.expression = extracted;
+            return set_val(0x10); // placeholder
         }
     }
 
     if(iequal(in, "push") || iequal(in, "pop"))
-        return 0x18;
+        return set_val(0x18);
 
     if(iequal(in, "peek"))
-        return 0x19;
+        return set_val(0x19);
 
     if(iequal(in, "sp"))
-        return 0x1b;
+        return set_val(0x1b);
 
     if(iequal(in, "pc"))
-        return 0x1c;
+        return set_val(0x1c);
 
     if(iequal(in, "ex"))
-        return 0x1d;
+        return set_val(0x1d);
 
     if(is_constant(in))
     {
         auto val = get_constant_of<uint16_t>(in);
 
-        return decode_pack_constant(val, apos, out);
-    }
-
-    if(is_label_reference(in))
-    {
-        auto test_val_opt = sym.get_symbol_definition(in);
-
-        if(test_val_opt.has_value())
-            return decode_pack_constant(test_val_opt.value(), apos, out);
-
-        out = 0;
-        is_label = in;
-        return 0x1f;
+        return set_val(decode_pack_constant(val, apos, res.extra_word, sett));
     }
 
     bool should_delay = false;
@@ -797,22 +826,22 @@ constexpr std::optional<uint32_t> decode_value(std::string_view in, arg_pos::typ
             return std::nullopt;
 
         if(eres.word.has_value())
-            return decode_pack_constant(eres.word.value(), apos, out);
+            return set_val(decode_pack_constant(eres.word.value(), apos, res.extra_word, sett));
 
         if(eres.which_register.has_value())
         {
             auto decoded = get_register_immediate_encoding(eres.which_register.value());
 
             if(decoded.has_value())
-                return decoded;
+                return set_val(decoded.value());
         }
     }
 
     if(should_delay)
     {
-        out = 0;
-        is_expression = in;
-        return 0x1f; // next word (placeholder)
+        res.extra_word = 0;
+        res.expression = in;
+        return set_val(0x1f); // next word (placeholder)
     }
 
     return std::nullopt;
@@ -827,7 +856,7 @@ struct opcode
 
 inline
 constexpr
-std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line)
+std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_view& in, stack_vector<uint16_t, MEM_SIZE>& out, size_t& token_text_offset_start, size_t token_start, const stack_vector<uint16_t, MEM_SIZE>& source_to_line, assembler_settings& sett)
 {
     error_info err;
 
@@ -934,6 +963,15 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
         d.value = val;
 
         sym.defines.push_back(d);
+
+        return std::nullopt;
+    }
+
+    if(iequal(".export", consumed_name) || iequal("export", consumed_name))
+    {
+        auto to_export = consume_next(in, true);
+
+        sym.exports.push_back(to_export);
 
         return std::nullopt;
     }
@@ -1088,37 +1126,33 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
 
                 auto val_a = consume_next(in, false);
 
-                std::optional<int32_t> extra_b;
-                std::optional<std::string_view> is_label_b;
-                std::optional<std::string_view> is_expression_b;
-                auto compiled_b = decode_value(val_b, arg_pos::B, extra_b, is_label_b, is_expression_b, sym);
+                auto decoded_b_opt = decode_value(val_b, arg_pos::B, sym, sett);
+                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett);
 
-                std::optional<int32_t> extra_a;
-                std::optional<std::string_view> is_label_a;
-                std::optional<std::string_view> is_expression_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym);
-
-                if(!compiled_b.has_value())
+                if(!decoded_b_opt.has_value())
                 {
                     err.msg = "first argument failed to decode";
                     return err;
                 }
 
-                if(!compiled_a.has_value())
+                if(!decoded_a_opt.has_value())
                 {
                     err.msg = "second argument failed to decode";
                     return err;
                 }
 
-                auto instr = construct_type_a(code, compiled_a.value(), compiled_b.value());
+                auto decoded_b = decoded_b_opt.value();
+                auto decoded_a = decoded_a_opt.value();
+
+                auto instr = construct_type_a(code, decoded_a.val, decoded_b.val);
 
                 uint16_t instruction_word = out.size();
 
                 out.push_back(instr);
 
-                if(extra_a.has_value())
+                if(decoded_a.extra_word.has_value())
                 {
-                    uint32_t promote_a = extra_a.value();
+                    uint32_t promote_a = decoded_a.extra_word.value();
 
                     if(promote_a >= 65536)
                     {
@@ -1126,23 +1160,23 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         return err;
                     }
 
-                    if(is_label_a.has_value())
+                    if(decoded_a.label.has_value())
                     {
                         label l;
-                        l.name = is_label_a.value();
+                        l.name = decoded_a.label.value();
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
                     }
 
-                    if(is_expression_a.has_value())
+                    if(decoded_a.expression.has_value())
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
                         delayed.extra_word = out.size();
-                        delayed.expression = is_expression_a.value();
+                        delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
-                        delayed.is_memory_reference = is_address(val_a);
+                        delayed.is_memory_reference = decoded_a.is_address;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1150,9 +1184,9 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                     out.push_back(promote_a);
                 }
 
-                if(extra_b.has_value())
+                if(decoded_b.extra_word.has_value())
                 {
-                    uint32_t promote_b = extra_b.value();
+                    uint32_t promote_b = decoded_b.extra_word.value();
 
                     if(promote_b >= 65536)
                     {
@@ -1160,23 +1194,23 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         return err;
                     }
 
-                    if(is_label_b.has_value())
+                    if(decoded_b.label.has_value())
                     {
                         label l;
-                        l.name = is_label_b.value();
+                        l.name = decoded_b.label.value();
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
                     }
 
-                    if(is_expression_b.has_value())
+                    if(decoded_b.expression.has_value())
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
                         delayed.extra_word = out.size();
-                        delayed.expression = is_expression_b.value();
+                        delayed.expression = decoded_b.expression.value();
                         delayed.type = arg_pos::B;
-                        delayed.is_memory_reference = is_address(val_b);
+                        delayed.is_memory_reference = decoded_b.is_address;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1191,26 +1225,25 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
             {
                 auto val_a = consume_next(in, false);
 
-                std::optional<int32_t> extra_a;
-                std::optional<std::string_view> is_label_a;
-                std::optional<std::string_view> is_expression_a;
-                auto compiled_a = decode_value(val_a, arg_pos::A, extra_a, is_label_a, is_expression_a, sym);
+                auto decoded_a_opt = decode_value(val_a, arg_pos::A, sym, sett);
 
-                if(!compiled_a.has_value())
+                if(!decoded_a_opt.has_value())
                 {
                     err.msg = "first argument failed to decode";
                     return err;
                 }
 
-                auto instr = construct_type_b(code, compiled_a.value());
+                auto decoded_a = decoded_a_opt.value();
+
+                auto instr = construct_type_b(code, decoded_a.val);
 
                 uint16_t instruction_word = out.size();
 
                 out.push_back(instr);
 
-                if(extra_a.has_value())
+                if(decoded_a.extra_word.has_value())
                 {
-                    uint32_t promote_a = extra_a.value();
+                    uint32_t promote_a = decoded_a.extra_word.value();
 
                     if(promote_a >= 65536)
                     {
@@ -1218,23 +1251,23 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
                         return err;
                     }
 
-                    if(is_label_a.has_value())
+                    if(decoded_a.label.has_value())
                     {
                         label l;
-                        l.name = is_label_a.value();
+                        l.name = decoded_a.label.value();
                         l.offset = out.size();
 
                         sym.usages.push_back(l);
                     }
 
-                    if(is_expression_a.has_value())
+                    if(decoded_a.expression.has_value())
                     {
                         delayed_expression delayed;
                         delayed.base_word = instruction_word;
                         delayed.extra_word = out.size();
-                        delayed.expression = is_expression_a.value();
+                        delayed.expression = decoded_a.expression.value();
                         delayed.type = arg_pos::A;
-                        delayed.is_memory_reference = is_address(val_a);
+                        delayed.is_memory_reference = decoded_a.is_address;
 
                         sym.expressions.push_back(delayed);
                     }
@@ -1260,11 +1293,149 @@ std::optional<error_info> add_opcode_with_prefix(symbol_table& sym, std::string_
     return err;
 }
 
+///returns error
+template<typename T>
 constexpr
-std::pair<std::optional<return_info>, error_info> assemble(std::string_view text)
+std::optional<std::string_view> resolve_delayed_expression(T& mem_in, symbol_table& sym, const delayed_expression& delayed, bool allow_further_delaying, std::vector<delayed_expression>& unresolved)
+{
+    bool should_delay = false;
+    auto value_opt = parse_expression(sym, delayed.expression, should_delay);
+
+    if(should_delay && !allow_further_delaying)
+        return "Expression contains undefined label";
+
+    if(should_delay)
+    {
+        unresolved.push_back(delayed);
+        return std::nullopt;
+    }
+
+    expression_result& res = value_opt.value();
+
+    uint16_t& mem = mem_in[delayed.base_word];
+
+    if(res.which_register.has_value())
+    {
+        if(!delayed.is_memory_reference && res.word.has_value())
+        {
+            return "Cannot execute reg + constant unless its in a memory reference";
+        }
+
+        uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+
+        if(res.op.has_value() && res.op.value() != "+")
+        {
+            return "Expressions must boil down to [reg + constant], or solely reg or solely constant otherwise";
+        }
+
+        uint16_t offset = 0;
+
+        if(delayed.is_memory_reference)
+        {
+            auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
+
+            if(reg_opt.has_value())
+            {
+                offset = 0x10 + reg_opt.value();
+            }
+            else if(iequal(res.which_register.value(), "sp"))
+            {
+                offset = 0x1a;
+            }
+            else
+            {
+                return "Expression tried to use something which was not a register or a label";
+            }
+        }
+        else
+        {
+            auto reg_opt = get_register_immediate_encoding(res.which_register.value());
+
+            if(reg_opt.has_value())
+            {
+                offset = reg_opt.value();
+            }
+            else
+            {
+                return "Expression involving a register failed to decode, invalid register?";
+            }
+        }
+
+        mem_in[delayed.extra_word] = extra_value;
+
+        if(delayed.type == arg_pos::A)
+        {
+            mem = mem & 0b0000001111111111;
+            mem = mem | (offset << 10);
+        }
+
+        if(delayed.type == arg_pos::B)
+        {
+            mem = mem & 0b1111110000011111;
+            mem = mem | (offset << 5);
+        }
+    }
+    else
+    {
+        uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+
+        if(res.word.has_value())
+        {
+            uint16_t offset = 0;
+
+            if(delayed.is_memory_reference)
+            {
+                offset = 0x1e;
+            }
+            else
+            {
+                if(res.which_register.has_value())
+                {
+                    return "Cannot have both a register and a constant as a literal";
+                }
+
+                offset = 0x1f;
+            }
+
+            mem_in[delayed.extra_word] = extra_value;
+
+            if(delayed.type == arg_pos::A)
+            {
+                mem = mem & 0b0000001111111111;
+                mem = mem | (offset << 10);
+            }
+
+            if(delayed.type == arg_pos::B)
+            {
+                mem = mem & 0b1111110000011111;
+                mem = mem | (offset << 5);
+            }
+        }
+        else
+        {
+            return "Something went wrong in delayed expression evaluation";
+        }
+    }
+
+    return std::nullopt;
+}
+
+constexpr
+std::pair<std::optional<return_info>, error_info> assemble(std::string_view text, assembler_settings sett = assembler_settings())
 {
     return_info rinfo;
     symbol_table sym;
+    sym.base_offset = sett.location;
+
+    ///these are deliberately not affected by relocations
+    for(auto [absolute_value, name] : sett.provided_symbol_definitions)
+    {
+        define d;
+        d.name = name;
+        d.value = absolute_value;
+
+        sym.defines.push_back(d);
+    }
 
     stack_vector<uint16_t, MEM_SIZE> source_to_line;
 
@@ -1291,7 +1462,7 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
 
         size_t token_offset = 0;
 
-        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line);
+        auto error_opt = add_opcode_with_prefix(sym, text, rinfo.mem, token_offset, offset, source_to_line, sett);
 
         uint16_t source_character = offset + token_offset;
 
@@ -1365,179 +1536,147 @@ std::pair<std::optional<return_info>, error_info> assemble(std::string_view text
         }
     }*/
 
-    /*if(sym.definitions.size() > 0 && sym.usages.size() > 0)
+    std::vector<delayed_expression> unresolved;
+
+    for(const delayed_expression& delayed : sym.expressions)
     {
-        if(!std::is_constant_evaluated())
-        {
-            std::sort(sym.definitions.begin(), sym.definitions.end(), [](const label& l1, const label& l2) constexpr {return l1.name < l2.name;});
-            std::sort(sym.usages.begin(), sym.usages.end(), [](const label& l1, const label& l2) constexpr {return l1.name < l2.name;});
-        }
-        else
-        {
-
-        }
-    }*/
-
-    for(label& j : sym.usages)
-    {
-        bool found = false;
-
-        for(label& i : sym.definitions)
-        {
-            if(j.name != i.name)
-                continue;
-
-            rinfo.mem.svec[j.offset] = i.offset;
-
-            found = true;
-            break;
-        }
-
-        if(!found)
-        {
-            error_info err;
-            err.msg = "Label used with no definition";
-            err.character = 0;
-            err.line = rinfo.pc_to_source_line[j.offset];
-            err.name_in_source = j.name;
-
-            return {std::nullopt, err};
-        }
-    }
-
-    for(delayed_expression& delayed : sym.expressions)
-    {
-        bool should_delay = false;
-        auto value_opt = parse_expression(sym, delayed.expression, should_delay);
-
         error_info err;
         err.character = 0;
         err.line = rinfo.pc_to_source_line[delayed.base_word];
         err.name_in_source = delayed.expression;
 
-        if(should_delay)
-        {
-            err.msg = "Expression contains undefined label";
+        auto patch_result = resolve_delayed_expression(rinfo.mem, sym, delayed, sett.allow_unresolved_symbols, unresolved);
 
+        if(patch_result.has_value())
+        {
+            err.msg = patch_result.value();
             return {std::nullopt, err};
         }
+    }
 
-        expression_result& res = value_opt.value();
+    rinfo.unresolved_expressions = unresolved;
 
-        uint16_t& mem = rinfo.mem.svec[delayed.base_word];
+    ///relocate
+    ///doing it down here because in the future, will need to be able to relocate eg the translation map
+    if(sett.location != 0)
+    {
+        rinfo.mem.shift_contents_right(sett.location);
+        rinfo.translation_map.shift_contents_right(sett.location);
+        rinfo.pc_to_source_line.shift_contents_right(sett.location);
 
-        if(res.which_register.has_value())
+        for(uint16_t& val : rinfo.source_line_to_pc)
         {
-            if(!delayed.is_memory_reference && res.word.has_value())
-            {
-                err.msg = "Cannot execute reg + constant unless its in a memory reference";
-                return {std::nullopt, err};
-            }
-
-            uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
-
-            if(res.op.has_value() && res.op.value() != "+")
-            {
-                err.msg = "Expressions must boil down to [reg + constant], or solely reg or solely constant otherwise";
-
-                return {std::nullopt, err};
-            }
-
-            uint16_t offset = 0;
-
-            if(delayed.is_memory_reference)
-            {
-                auto reg_opt = get_register_assembly_value_from_name(res.which_register.value());
-
-                if(reg_opt.has_value())
-                {
-                    offset = 0x10 + reg_opt.value();
-                }
-                else if(iequal(res.which_register.value(), "sp"))
-                {
-                    offset = 0x1a;
-                }
-                else
-                {
-                    err.msg = "Expression tried to use something which was not a register or a label";
-                    return {std::nullopt, err};
-                }
-            }
-            else
-            {
-                auto reg_opt = get_register_immediate_encoding(res.which_register.value());
-
-                if(reg_opt.has_value())
-                {
-                    offset = reg_opt.value();
-                }
-                else
-                {
-                    err.msg = "Expression involving a register failed to decode, invalid register?";
-                    return {std::nullopt, err};
-                }
-            }
-
-            rinfo.mem.svec[delayed.extra_word] = extra_value;
-
-            if(delayed.type == arg_pos::A)
-            {
-                mem = mem & 0b0000001111111111;
-                mem = mem | (offset << 10);
-            }
-
-            if(delayed.type == arg_pos::B)
-            {
-                mem = mem & 0b1111110000011111;
-                mem = mem | (offset << 5);
-            }
+            val += sett.location;
         }
-        else
+    }
+
+    for(std::string_view l : sett.label_values_to_extract)
+    {
+        auto val_opt = sym.get_symbol_definition(l);
+
+        if(val_opt.has_value())
         {
-            uint16_t extra_value = res.word.has_value() ? res.word.value() : 0;
+            rinfo.exported_label_names.push_back({val_opt.value(), std::string(l)});
+        }
+    }
 
-            if(res.word.has_value())
-            {
-                uint16_t offset = 0;
+    for(std::string_view l : sym.exports)
+    {
+        auto val_opt = sym.get_symbol_definition(l);
 
-                if(delayed.is_memory_reference)
-                {
-                    offset = 0x1e;
-                }
-                else
-                {
-                    if(res.which_register.has_value())
-                    {
-                        err.msg = "Cannot have both a register and a constant as a literal";
-                        return {std::nullopt, err};
-                    }
-
-                    offset = 0x1f;
-                }
-
-                rinfo.mem.svec[delayed.extra_word] = extra_value;
-
-                if(delayed.type == arg_pos::A)
-                {
-                    mem = mem & 0b0000001111111111;
-                    mem = mem | (offset << 10);
-                }
-
-                if(delayed.type == arg_pos::B)
-                {
-                    mem = mem & 0b1111110000011111;
-                    mem = mem | (offset << 5);
-                }
-            }
-            else
-            {
-                err.msg = "Something went wrong in delayed expression evaluation";
-                return {std::nullopt, err};
-            }
+        if(val_opt.has_value())
+        {
+            rinfo.exported_label_names.push_back({val_opt.value(), std::string(l)});
         }
     }
 
     return {rinfo, error_info()};
+}
+
+template<typename T>
+constexpr
+std::optional<error_info> resolve_delayed_expressions(T& mem, const std::vector<std::pair<uint16_t, std::string>>& resolve_table, const std::vector<delayed_expression>& unresolved_expressions)
+{
+    symbol_table sym;
+
+    for(const auto& [val, name] : resolve_table)
+    {
+        define d;
+        d.name = name;
+        d.value = val;
+
+        sym.defines.push_back(d);
+    }
+
+    for(const delayed_expression& delayed : unresolved_expressions)
+    {
+        error_info inf;
+        inf.character = -1;
+        inf.line = -1;
+        inf.name_in_source = delayed.expression;
+
+        std::vector<delayed_expression> none;
+        auto patch_result = resolve_delayed_expression(mem, sym, delayed, false, none);
+
+        if(patch_result.has_value())
+        {
+            inf.msg = patch_result.value();
+            return inf;
+        }
+    }
+
+    return std::nullopt;
+}
+
+template<template<typename> typename T, typename U>
+constexpr
+std::pair<std::optional<return_info>, error_info> assemble_multiple(const T<U>& texts, assembler_settings sett = assembler_settings())
+{
+    sett.allow_unresolved_symbols = true;
+
+    return_info combined;
+
+    std::vector<delayed_expression> all_delayed;
+    std::vector<std::pair<uint16_t, std::string>> all_exported;
+
+    for(const U& val : texts)
+    {
+        sett.location = combined.mem.size();
+        auto [result, err] = assemble(val, sett);
+
+        if(!result.has_value())
+            return {std::nullopt, err};
+
+        size_t old_size = combined.mem.idx;
+        size_t new_size = result.value().mem.idx;
+
+        combined.mem.idx = new_size;
+
+        for(auto i=old_size; i != new_size; i++)
+        {
+            combined.mem[i] = result.value().mem[i];
+        }
+
+        ///offset by however long the initial program was so we patch the correct byte
+        for(delayed_expression delay : result.value().unresolved_expressions)
+        {
+            delay.base_word += sett.location;
+
+            all_delayed.push_back(delay);
+        }
+
+        for(auto i : result.value().exported_label_names)
+        {
+            all_exported.push_back(i);
+        }
+    }
+
+    auto err_opt = resolve_delayed_expressions(combined.mem, all_exported, all_delayed);
+
+    if(err_opt.has_value())
+        return {std::nullopt, err_opt.value()};
+
+    return {combined, {}};
 }
 
 #endif // BASE_ASM_HPP_INCLUDED
